@@ -84,9 +84,9 @@ because it is fun, no more justification is needed.</p>
 to execute Forth primitives directly. The CPU and Forth interpreter
 themselves have their own sources, which all makes for a confusing pedigree.
 The CPU, called the H2, was derived from a well known Forth CPU written
-in Verilog, called the <a href="http://excamera.com/sphinx/fpga-j1.html">J1 CPU</a>, and the Forth running on the H2 comes 
+in <a href="https://en.wikipedia.org/wiki/Verilog">Verilog</a>, called the <a href="http://excamera.com/sphinx/fpga-j1.html">J1 CPU</a>, and the Forth running on the H2 comes 
 from an adaption of <a href="https://github.com/samawati/j1eforth">eForth written for the J1</a>  and 
-from 'The Zen of eForth' by C. H. Ting.</p>
+from 'The Zen of eForth' by C. H. Ting. </p>
 
 <p>Instead of a metacompiler written in Forth a cross compiler for a Forth like
 language was made, which could create an image readable by both the
@@ -98,7 +98,8 @@ used to develop the present system which consists of only the virtual
 machine, a binary image containing a Forth interpreter, and this metacompiler
 with the meta-compiled Forth. These changes and the discarding of the cross
 compiler written in C can be seen in the Git repository this project comes
-in (&lt;https://github.com/howerj/embed&gt;).</p>
+in (&lt;https://github.com/howerj/embed&gt;). The VM here is no longer compatible
+with the <a href="https://github.com/howerj/forth-cpu">H2 CPU</a> it was derived from.</p>
 
 <p>The project, documentation and Forth images are under an <a href="https://github.com/howerj/embed/blob/master/LICENSE">MIT license</a>.</p>
 
@@ -229,8 +230,8 @@ useful (in fact pretty much required) for writing a metacompiler.</p>
 0055|     ?dup
 0056|   while
 0057|     dup
-0058|     nfa count type space dup ( &lt;- @warning should use target nfa! )
-0059|     cfa tbody @ u. cr        ( &lt;- @warning should use target cfa! )
+0058|     nfa count type space dup
+0059|     cfa &gt;body @ u. cr
 0060|     $3FFF and @
 0061|   repeat ;
 0062| : display ( -- : display metacompilation and target information )
@@ -253,7 +254,11 @@ useful (in fact pretty much required) for writing a metacompiler.</p>
 0079|    only forth definitions hex
 0080|    ." SAVING... " save-hex ." DONE! " cr
 0081|    ." STACK&gt; " .s cr ;
-0082| : [a] ( "name" -- : find word and compile an assembler word )
+</code></pre>
+
+<h3>The Assembler</h3>
+
+<pre><code>0082| : [a] ( "name" -- : find word and compile an assembler word )
 0083|   token assembler.1 search-wordlist 0= abort" [a]? "
 0084|   cfa compile, ; immediate
 0085| : asm[ assembler.1 -order ; immediate ( -- )
@@ -312,8 +317,8 @@ ALU Operations</p>
 0113| a: #save   $1600 a; ( Save memory disk: n = start, T = end, T' = error )
 0114| a: #tx     $1700 a; ( Transmit Byte: t = byte, T' = error )
 0115| a: #rx     $1800 a; ( Block until byte received, T = byte/error )
-0116| a: #u/mod  $1900 a; ( Remainder/Divide: )
-0117| a: #/mod   $1A00 a; ( Signed Remainder/Divide: )
+0116| a: #um/mod $1900 a; ( Remainder/Divide: Double Cell )
+0117| a: #/mod   $1A00 a; ( Signed Remainder/Divide: Single Cell )
 0118| a: #bye    $1B00 a; ( Exit Interpreter )
 </code></pre>
 
@@ -344,7 +349,7 @@ conditional branches, function calls and literals. ALU instructions
 comprise of an ALU operation, stack effects and register move bits. Function
 returns are part of the ALU operation instruction set.</p>
 
-<pre><code>0129| : ?set dup $E000 and abort" argument too large " ;
+<pre><code>0129| : ?set dup $E000 and abort" argument too large " ; ( u -- )
 0130| a: branch  2/ ?set [a] #branch  or t, a; ( a -- : an Unconditional branch )
 0131| a: ?branch 2/ ?set [a] #?branch or t, a; ( a -- : Conditional branch )
 0132| a: call    2/ ?set [a] #call    or t, a; ( a -- : Function call )
@@ -360,6 +365,8 @@ returns are part of the ALU operation instruction set.</p>
 0142| a: return ( -- : Compile a return into the target )
 0143|    [a] #t [a] r-&gt;pc [a] r-1 [a] alu a;
 </code></pre>
+
+<h3>Peep hole Optimizer</h3>
 
 <p>The following words implement a primitive peephole optimizer, which is not
 the only optimization done, but is the major one. It performs tail call
@@ -410,6 +417,8 @@ Some of these optimizations have a manual element to them, such as
 0155|   [a] return ;
 0156| : exit, exit-optimize update-fence ;            ( -- )
 </code></pre>
+
+<h3>Meta-Compiler Defining Words and Control Structures</h3>
 
 <p><em>compile-only</em> and <em>immediate</em> set bits in the latest defined word for
 making a word a "compile only" word (one which can only be executed from
@@ -486,26 +495,39 @@ word header.</p>
 <p><em>t;</em> does everything <em>fallthrough;</em> does except it also compiles an exit
 into the dictionary, which is how a normal word definition is terminated.</p>
 
-<pre><code>0167| : literal [a] literal ;                      ( u -- )
-0168| : h: ( -- : create a word with no name in the target dictionary )
-0169|  ' literal &lt;literal&gt; !
-0170|  $F00D mcreate there , update-fence does&gt; @ [a] call ;
+<p>The words <em>[</em> and <em>]</em> could be said to change the state of the meta-compiler,
+even though the meta-compiler is not effected by the <em>state</em> variable. A
+possible improvement to the meta-compiler and to the eForth image it
+generates would be to vector words like <em>quit</em> so the [Outer Interpreter][]
+could be replaced by the meta-compiler, or at least words like <em>interpret</em>
+could be vectored. Another improvement would be to load and unload the
+meta-compilers vocabularies when the new definitions of <em>:</em> and <em>;</em> are
+encountered. There are man possibilities, however the improvements given
+by them would be minor, using the meta-compiler is mostly like writing normal
+Forth.</p>
+
+<pre><code>0167| : literal [a] literal ;       ( u --  )
+0168| : [ ' literal   &lt;literal&gt; ! ; ( -- )
+0169| : ] ' (literal) &lt;literal&gt; ! ; ( -- )
+0170| : h: ( -- : create a word with no name in the target dictionary )
+0171|  [compile] [
+0172|  $F00D mcreate there , update-fence does&gt; @ [a] call ;
 </code></pre>
 
 <p><em>t:</em> does everything <em>h:</em> does but also compiles a header for that word
 into the dictionary using <em>thead</em>. It does affect the target dictionary
 directly.</p>
 
-<pre><code>0171| : t: ( "name", -- : creates a word in the target dictionary )
-0172|   lookahead thead h: ;
+<pre><code>0173| : t: ( "name", -- : creates a word in the target dictionary )
+0174|   lookahead thead h: ;
 </code></pre>
 
-<p>@warning: Only use <em>fallthrough</em> to fallthrough to words defined with <em>h:</em>.</p>
+<p>@warning: Only use <em>fallthrough</em> to fall-through to words defined with <em>h:</em>.</p>
 
-<pre><code>0173| : fallthrough;
-0174|   ' (literal) &lt;literal&gt; !
-0175|   $F00D &lt;&gt; if source type cr 1 abort" unstructured! " then ;
-0176| : t; fallthrough; optimize if exit, else [a] return then ;
+<pre><code>0175| : fallthrough;
+0176|   [compile] ]
+0177|   $F00D &lt;&gt; if source type cr 1 abort" unstructured! " then ;
+0178| : t; fallthrough; optimize if exit, else [a] return then ;
 </code></pre>
 
 <p><em>fetch-xt</em> is used to check that a variable contains a valid execution token,
@@ -517,7 +539,7 @@ have defined the target versions of <em>doConst</em>. A reference to this functi
 will be stored in <em>tdoConst</em> once it has been defined in the target
 dictionary.</p>
 
-<pre><code>0177| : fetch-xt @ dup 0= abort" (null) " ; ( a -- xt )
+<pre><code>0179| : fetch-xt @ dup 0= abort" (null) " ; ( a -- xt )
 </code></pre>
 
 <p><em>tconstant</em> as mentioned defines a constant in the target dictionary which
@@ -534,13 +556,13 @@ meta-compiler it does not compile references to the constant, but instead
 it finds out what the constant was and compiles it in as a literal - which
 is a small optimization.</p>
 
-<pre><code>0178| : tconstant ( "name", n --, Run Time: -- )
-0179|   &gt;r
-0180|   lookahead
-0181|   thead
-0182|   there tdoConst fetch-xt [a] call r&gt; t, &gt;r
-0183|   mcreate r&gt; ,
-0184|   does&gt; @ tbody t@ [a] literal ;
+<pre><code>0180| : tconstant ( "name", n --, Run Time: -- )
+0181|   &gt;r
+0182|   lookahead
+0183|   thead
+0184|   there tdoConst fetch-xt [a] call r&gt; t, &gt;r
+0185|   mcreate r&gt; ,
+0186|   does&gt; @ tbody t@ [a] literal ;
 </code></pre>
 
 <p><em>tvariable</em> is like <em>tconstant</em> expect for variables. It requires <em>tdoVar</em>
@@ -550,27 +572,30 @@ optimization as <em>tconstant</em>, it does not actually compile a call to the
 created variables <em>doVar</em> field but instead compiles the address as a literal
 in the target when the word is called by the meta-compiler.</p>
 
-<pre><code>0185| : tvariable ( "name", n -- , Run Time: -- a )
-0186|   &gt;r
-0187|   lookahead
-0188|   thead
-0189|   there tdoVar fetch-xt [a] call r&gt; t, &gt;r
-0190|   mcreate r&gt; ,
-0191|   does&gt; @ tbody [a] literal ;
+<pre><code>0187| : tvariable ( "name", n -- , Run Time: -- a )
+0188|   &gt;r
+0189|   lookahead
+0190|   thead
+0191|   there tdoVar fetch-xt [a] call r&gt; t, &gt;r
+0192|   mcreate r&gt; ,
+0193|   does&gt; @ tbody [a] literal ;
 </code></pre>
 
 <p><em>tlocation</em> just reserves space in the target.</p>
 
-<pre><code>0192| : tlocation ( "name", n -- : Reserve space in target for a memory location )
-0193|   there swap t, mcreate , does&gt; @ [a] literal ;
-0194| : [t] ( "name", -- a : get the address of a target word )
-0195|   token target.1 search-wordlist 0= abort" [t]? "
-0196|   cfa &gt;body @ ;
+<pre><code>0194| : tlocation ( "name", n -- : Reserve space in target for a memory location )
+0195|   there swap t, mcreate , does&gt; @ [a] literal ;
+0196| : [t] ( "name", -- a : get the address of a target word )
+0197|   token target.1 search-wordlist 0= abort" [t]? "
+0198|   cfa &gt;body @ ;
+0199| : [f] ( "name", -- execute word in host Forth vocabulary )
+0200|   token forth-wordlist search-wordlist 0= abort" [f]?"
+0201|   cfa execute ;
 </code></pre>
 
 <p>@warning only use <em>[v]</em> on variables, not <em>tlocations</em></p>
 
-<pre><code>0197| : [v] [t] =cell + ; ( "name", -- a )
+<pre><code>0202| : [v] [t] =cell + ; ( "name", -- a )
 </code></pre>
 
 <p><em>xchange</em> takes two vocabularies defined in the target by their variable
@@ -578,158 +603,161 @@ names, "name1" and "name2", and updates "name1" so it contains the previously
 defined words, and makes "name2" the vocabulary which subsequent definitions
 are added to.</p>
 
-<pre><code>0198| : xchange ( "name1", "name2", -- : exchange target vocabularies )
-0199|   [last] [t] t! [t] t@ tlast meta! ;
+<pre><code>0203| : xchange ( "name1", "name2", -- : exchange target vocabularies )
+0204|   [last] [t] t! [t] t@ tlast meta! ;
 </code></pre>
 
 <p>These words implement the basic control structures needed to make
-applications in the meta-compiled program, they are no immediate words
+applications in the meta-compiled program, there are no immediate words
 and they do not need to be, <em>t:</em> and <em>t;</em> do not change the interpreter
 state, once the actual metacompilation begins everything is command mode.</p>
 
-<pre><code>0200| : begin  there update-fence ;                ( -- a )
-0201| : until  [a] ?branch ;                       ( a -- )
-0202| : if     there update-fence 0 [a] ?branch  ; ( -- a )
-0203| : skip   there update-fence 0 [a] branch ;   ( -- a )
-0204| : then   begin 2/ over t@ or swap t! ;       ( a -- )
-0205| : else   skip swap then ;                    ( a -- a )
-0206| : while  if swap ;                           ( a -- a a )
-0207| : repeat [a] branch then update-fence ;      ( a -- )
-0208| : again  [a] branch update-fence ;           ( a -- )
-0209| : aft    drop skip begin swap ;              ( a -- a )
-0210| : constant mcreate , does&gt; @ literal ;       ( "name", a -- )
-0211| : [char] char literal ;                      ( "name" )
-0212| : postpone [t] [a] call ;                    ( "name", -- )
-0213| : next tdoNext fetch-xt [a] call t, update-fence ; ( a -- )
-0214| : exit exit, ;                               ( -- )
-0215| : ' [t] literal ;                            ( "name", -- )
+<p>'postpone' is useful to make sure that a reference to the target definition
+is definitely called.</p>
+
+<pre><code>0205| : begin  there update-fence ;                ( -- a )
+0206| : until  [a] ?branch ;                       ( a -- )
+0207| : if     there update-fence 0 [a] ?branch  ; ( -- a )
+0208| : skip   there update-fence 0 [a] branch ;   ( -- a )
+0209| : then   begin 2/ over t@ or swap t! ;       ( a -- )
+0210| : else   skip swap then ;                    ( a -- a )
+0211| : while  if swap ;                           ( a -- a a )
+0212| : repeat [a] branch then update-fence ;      ( a -- )
+0213| : again  [a] branch update-fence ;           ( a -- )
+0214| : aft    drop skip begin swap ;              ( a -- a )
+0215| : constant mcreate , does&gt; @ literal ;       ( "name", a -- )
+0216| : [char] char literal ;                      ( "name" )
+0217| : postpone [t] [a] call ;                    ( "name", -- )
+0218| : next tdoNext fetch-xt [a] call t, update-fence ; ( a -- )
+0219| : exit exit, ;                               ( -- )
+0220| : ' [t] literal ;                            ( "name", -- )
 </code></pre>
 
-<p>@bug maximum string length is 32 bytes, not 255 as it should be.</p>
+<p>@bug maximum string length is 64 bytes, not 255 as it should be.</p>
 
-<pre><code>0216| : ." tdoPrintString fetch-xt [a] call $literal ; ( "string", -- )
-0217| : $" tdoStringLit   fetch-xt [a] call $literal ; ( "string", -- )
+<pre><code>0221| : ." tdoPrintString fetch-xt [a] call $literal ; ( "string", -- )
+0222| : $" tdoStringLit   fetch-xt [a] call $literal ; ( "string", -- )
 </code></pre>
 
 <p>The following section adds the words implementable in assembly to the
 metacompiler, when one of these words is used in the meta-compiled program
 it will be implemented in assembly.</p>
 
-<pre><code>0218| : nop     ]asm  #t       alu asm[ ;
-0219| : dup     ]asm  #t       t-&gt;n   d+1   alu asm[ ;
-0220| : over    ]asm  #n       t-&gt;n   d+1   alu asm[ ;
-0221| : invert  ]asm  #~t      alu asm[ ;
-0222| : um+     ]asm  #t+n     alu asm[ ;
-0223| : +       ]asm  #t+n     n-&gt;t   d-1   alu asm[ ;
-0224| : um*     ]asm  #t*n     alu asm[    ;
-0225| : *       ]asm  #t*n     n-&gt;t   d-1   alu asm[ ;
-0226| : swap    ]asm  #n       t-&gt;n   alu asm[ ;
-0227| : nip     ]asm  #t       d-1    alu asm[ ;
-0228| : drop    ]asm  #n       d-1    alu asm[ ;
-0229| : &gt;r      ]asm  #n       t-&gt;r   d-1   r+1   alu asm[ ;
-0230| : r&gt;      ]asm  #r       t-&gt;n   d+1   r-1   alu asm[ ;
-0231| : r@      ]asm  #r       t-&gt;n   d+1   alu asm[ ;
-0232| : @       ]asm  #[t]     alu asm[ ;
-0233| : !       ]asm  #n-&gt;[t]  d-1    alu asm[ ;
-0234| : rshift  ]asm  #n&gt;&gt;t    d-1    alu asm[ ;
-0235| : lshift  ]asm  #n&lt;&lt;t    d-1    alu asm[ ;
-0236| : =       ]asm  #t==n    d-1    alu asm[ ;
-0237| : u&lt;      ]asm  #nu&lt;t    d-1    alu asm[ ;
-0238| : &lt;       ]asm  #n&lt;t     d-1    alu asm[ ;
-0239| : and     ]asm  #t&amp;n     d-1    alu asm[ ;
-0240| : xor     ]asm  #t^n     d-1    alu asm[ ;
-0241| : or      ]asm  #t|n     d-1    alu asm[ ;
-0242| : sp@     ]asm  #sp@     t-&gt;n   d+1   alu asm[ ;
-0243| : sp!     ]asm  #sp!     alu asm[ ;
-0244| : 1-      ]asm  #t-1     alu asm[ ;
-0245| : rp@     ]asm  #rp@     t-&gt;n   d+1   alu asm[ ;
-0246| : rp!     ]asm  #rp!     d-1    alu asm[ ;
-0247| : 0=      ]asm  #t==0    alu asm[ ;
-0248| : yield?  ]asm  #bye     alu asm[ ;
-0249| : rx?     ]asm  #rx      t-&gt;n   d+1   alu asm[ ;
-0250| : tx!     ]asm  #tx      n-&gt;t   d-1   alu asm[ ;
-0251| : (save)  ]asm  #save    d-1    alu asm[ ;
-0252| : um/mod  ]asm  #u/mod   t-&gt;n   alu asm[ ;
-0253| : /mod    ]asm  #/mod    t-&gt;n   alu asm[ ;
-0254| : /       ]asm  #/mod    d-1    alu asm[ ;
-0255| : mod     ]asm  #/mod    n-&gt;t   d-1   alu asm[ ;
-0256| : rdrop   ]asm  #t       r-1    alu asm[ ;
+<pre><code>0223| : nop     ]asm  #t       alu asm[ ;
+0224| : dup     ]asm  #t       t-&gt;n   d+1   alu asm[ ;
+0225| : over    ]asm  #n       t-&gt;n   d+1   alu asm[ ;
+0226| : invert  ]asm  #~t      alu asm[ ;
+0227| : um+     ]asm  #t+n     alu asm[ ;
+0228| : +       ]asm  #t+n     n-&gt;t   d-1   alu asm[ ;
+0229| : um*     ]asm  #t*n     alu asm[    ;
+0230| : *       ]asm  #t*n     n-&gt;t   d-1   alu asm[ ;
+0231| : swap    ]asm  #n       t-&gt;n   alu asm[ ;
+0232| : nip     ]asm  #t       d-1    alu asm[ ;
+0233| : drop    ]asm  #n       d-1    alu asm[ ;
+0234| : &gt;r      ]asm  #n       t-&gt;r   d-1   r+1   alu asm[ ;
+0235| : r&gt;      ]asm  #r       t-&gt;n   d+1   r-1   alu asm[ ;
+0236| : r@      ]asm  #r       t-&gt;n   d+1   alu asm[ ;
+0237| : @       ]asm  #[t]     alu asm[ ;
+0238| : !       ]asm  #n-&gt;[t]  d-1    alu asm[ ;
+0239| : rshift  ]asm  #n&gt;&gt;t    d-1    alu asm[ ;
+0240| : lshift  ]asm  #n&lt;&lt;t    d-1    alu asm[ ;
+0241| : =       ]asm  #t==n    d-1    alu asm[ ;
+0242| : u&lt;      ]asm  #nu&lt;t    d-1    alu asm[ ;
+0243| : &lt;       ]asm  #n&lt;t     d-1    alu asm[ ;
+0244| : and     ]asm  #t&amp;n     d-1    alu asm[ ;
+0245| : xor     ]asm  #t^n     d-1    alu asm[ ;
+0246| : or      ]asm  #t|n     d-1    alu asm[ ;
+0247| : sp@     ]asm  #sp@     t-&gt;n   d+1   alu asm[ ;
+0248| : sp!     ]asm  #sp!     alu asm[ ;
+0249| : 1-      ]asm  #t-1     alu asm[ ;
+0250| : rp@     ]asm  #rp@     t-&gt;n   d+1   alu asm[ ;
+0251| : rp!     ]asm  #rp!     d-1    alu asm[ ;
+0252| : 0=      ]asm  #t==0    alu asm[ ;
+0253| : yield?  ]asm  #bye     alu asm[ ;
+0254| : rx?     ]asm  #rx      t-&gt;n   d+1   alu asm[ ;
+0255| : tx!     ]asm  #tx      n-&gt;t   d-1   alu asm[ ;
+0256| : (save)  ]asm  #save    d-1    alu asm[ ;
+0257| : um/mod  ]asm  #um/mod  t-&gt;n   alu asm[ ;
+0258| : /mod    ]asm  #/mod    t-&gt;n   alu asm[ ;
+0259| : /       ]asm  #/mod    d-1    alu asm[ ;
+0260| : mod     ]asm  #/mod    n-&gt;t   d-1   alu asm[ ;
+0261| : rdrop   ]asm  #t       r-1    alu asm[ ;
 </code></pre>
 
 <p>Some words can be implemented in a single instruction which have no
 analogue within Forth.</p>
 
-<pre><code>0257| : dup@    ]asm  #[t]     t-&gt;n   d+1 alu asm[ ;
-0258| : dup0=   ]asm  #t==0    t-&gt;n   d+1 alu asm[ ;
-0259| : dup&gt;r   ]asm  #t       t-&gt;r   r+1 alu asm[ ;
-0260| : 2dup=   ]asm  #t==n    t-&gt;n   d+1 alu asm[ ;
-0261| : 2dupxor ]asm  #t^n     t-&gt;n   d+1 alu asm[ ;
-0262| : 2dup&lt;   ]asm  #n&lt;t     t-&gt;n   d+1 alu asm[ ;
-0263| : rxchg   ]asm  #r       t-&gt;r       alu asm[ ;
-0264| : over-and  ]asm  #t&amp;n      alu asm[ ;
-0265| : over-xor  ]asm  #t^n      alu asm[ ;
+<pre><code>0262| : dup@    ]asm  #[t]     t-&gt;n   d+1 alu asm[ ;
+0263| : dup0=   ]asm  #t==0    t-&gt;n   d+1 alu asm[ ;
+0264| : dup&gt;r   ]asm  #t       t-&gt;r   r+1 alu asm[ ;
+0265| : 2dup=   ]asm  #t==n    t-&gt;n   d+1 alu asm[ ;
+0266| : 2dupxor ]asm  #t^n     t-&gt;n   d+1 alu asm[ ;
+0267| : 2dup&lt;   ]asm  #n&lt;t     t-&gt;n   d+1 alu asm[ ;
+0268| : rxchg   ]asm  #r       t-&gt;r       alu asm[ ;
+0269| : over-and  ]asm  #t&amp;n      alu asm[ ;
+0270| : over-xor  ]asm  #t^n      alu asm[ ;
 </code></pre>
 
 <p><em>for</em> needs the new definition of <em>&gt;r</em> to work correctly.</p>
 
-<pre><code>0266| : for &gt;r begin ;
-0267| : meta: : ;
-0268| ( : :noname h: ; )
-0269| : : t: ;
-0270| meta: ; t; ;
-0271| hide meta:
-0272| hide t:
-0273| hide t;
-0274| ]asm #~t              ALU asm[ constant =invert ( invert instruction )
-0275| ]asm #t  r-&gt;pc    r-1 ALU asm[ constant =exit   ( return/exit instruction )
-0276| ]asm #n  t-&gt;r d-1 r+1 ALU asm[ constant =&gt;r     ( to r. stk. instruction )
-0277| $20   constant =bl         ( blank, or space )
-0278| $D    constant =cr         ( carriage return )
-0279| $A    constant =lf         ( line feed )
-0280| $8    constant =bs         ( back space )
-0281| $1B   constant =escape     ( escape character )
-0282| $10   constant dump-width  ( number of columns for *dump* )
-0283| $50   constant tib-length  ( size of terminal input buffer )
-0284| $40   constant word-length ( maximum length of a word )
-0285| $40   constant c/l         ( characters per line in a block )
-0286| $10   constant l/b         ( lines in a block )
-0287| $F    constant l/b-1       ( lines in a block, less one )
-0288| (rp0) constant rp0         ( start of return stack )
-0289| (sp0) constant sp0         ( start of variable stack )
-0290| $2BAD constant magic       ( magic number for compiler security )
-0291| $F    constant #highest    ( highest bit in cell )
-0292| ( Volatile variables )
+<pre><code>0271| : for &gt;r begin ;
+0272| : meta: : ;
+0273| ( : :noname h: ; )
+0274| : : t: ;
+0275| meta: ; t; ;
+0276| hide meta:
+0277| hide t:
+0278| hide t;
+0279| ]asm #~t              ALU asm[ constant =invert ( invert instruction )
+0280| ]asm #t  r-&gt;pc    r-1 ALU asm[ constant =exit   ( return/exit instruction )
+0281| ]asm #n  t-&gt;r d-1 r+1 ALU asm[ constant =&gt;r     ( to r. stk. instruction )
+0282| $20   constant =bl         ( blank, or space )
+0283| $D    constant =cr         ( carriage return )
+0284| $A    constant =lf         ( line feed )
+0285| $8    constant =bs         ( back space )
+0286| $1B   constant =escape     ( escape character )
+0287| $10   constant dump-width  ( number of columns for *dump* )
+0288| $50   constant tib-length  ( size of terminal input buffer )
+0289| $40   constant word-length ( maximum length of a word )
+0290| $40   constant c/l         ( characters per line in a block )
+0291| $10   constant l/b         ( lines in a block )
+0292| $F    constant l/b-1       ( lines in a block, less one )
+0293| (rp0) constant rp0         ( start of return stack )
+0294| (sp0) constant sp0         ( start of variable stack )
+0295| $2BAD constant magic       ( magic number for compiler security )
+0296| $F    constant #highest    ( highest bit in cell )
+0297| ( Volatile variables )
 </code></pre>
 
 <p>\$4000 Unused</p>
 
-<pre><code>0293| $4002 constant last-def    ( last, possibly unlinked, word definition )
-0294| $4006 constant id          ( used for source id )
-0295| $4008 constant seed        ( seed used for the PRNG )
-0296| $400A constant handler     ( current handler for throw/catch )
-0297| $400C constant block-dirty ( -1 if loaded block buffer is modified )
-0298| $4010 constant &lt;key&gt;       ( -- c : new character, blocking input )
-0299| $4012 constant &lt;emit&gt;      ( c -- : emit character )
-0300| $4014 constant &lt;expect&gt;    ( "accept" vector )
-0301| ( $4016 constant &lt;tap&gt;     ( "tap" vector, for terminal handling )
-0302| ( $4018 constant &lt;echo&gt;    ( c -- : emit character )
-0303| ( $4020 constant &lt;ok&gt;      ( -- : display prompt )
-0304| ( $4022 constant _literal  ( u -- u | : handles literals )
-0305| $4110 constant context     ( holds current context for search order )
-0306| $4122 constant #tib        ( Current count of terminal input buffer )
-0307| $4124 constant tib-buf     ( ... and address )
-0308| $4126 constant tib-start   ( backup tib-buf value )
+<pre><code>0298| $4002 constant last-def    ( last, possibly unlinked, word definition )
+0299| $4006 constant id          ( used for source id )
+0300| $4008 constant seed        ( seed used for the PRNG )
+0301| $400A constant handler     ( current handler for throw/catch )
+0302| $400C constant block-dirty ( -1 if loaded block buffer is modified )
+0303| $4010 constant &lt;key&gt;       ( -- c : new character, blocking input )
+0304| $4012 constant &lt;emit&gt;      ( c -- : emit character )
+0305| $4014 constant &lt;expect&gt;    ( "accept" vector )
+0306| ( $4016 constant &lt;tap&gt;     ( "tap" vector, for terminal handling )
+0307| ( $4018 constant &lt;echo&gt;    ( c -- : emit character )
+0308| ( $4020 constant &lt;ok&gt;      ( -- : display prompt )
+0309| ( $4022 constant _literal  ( u -- u | : handles literals )
+0310| $4110 constant context     ( holds current context for search order )
+0311| $4122 constant #tib        ( Current count of terminal input buffer )
+0312| $4124 constant tib-buf     ( ... and address )
+0313| $4126 constant tib-start   ( backup tib-buf value )
 </code></pre>
 
 <p>\$4280 == pad-area</p>
 
-<pre><code>0309| $C    constant vm-options     ( Virtual machine options register )
-0310| $1A   constant header-length  ( location of length in header )
-0311| $1C   constant header-crc     ( location of CRC in header )
-0312| $22   constant header-options ( location of options bits in header )
-0313| target.1 +order         ( Add target word dictionary to search order )
-0314| meta -order meta +order ( Reorder so *meta* has a higher priority )
-0315| forth-wordlist   -order ( Remove normal Forth words to prevent accidents )
+<pre><code>0314| $C    constant vm-options     ( Virtual machine options register )
+0315| $1A   constant header-length  ( location of length in header )
+0316| $1C   constant header-crc     ( location of CRC in header )
+0317| $22   constant header-options ( location of options bits in header )
+0318| target.1         +order ( Add target word dictionary to search order )
+0319| meta -order meta +order ( Reorder so *meta* has a higher priority )
+0320| forth-wordlist   -order ( Remove normal Forth words to prevent accidents )
 </code></pre>
 
 <h1>The Target Forth</h1>
@@ -755,24 +783,24 @@ systems and programs may deal with the binary (such as have a string literal
 the ASCII range of characters so it is obvious that the file is meant to
 be treated as a binary and not as text).</p>
 
-<pre><code>0316| 0        t, \  $0: PC: program counter, jump to start / reset vector
-0317| 0        t, \  $2: T, top of stack
-0318| (rp0)    t, \  $4: RP0, return stack pointer 
-0319| (sp0)    t, \  $6: SP0, variable stack pointer
-0320| 0        t, \  $8: Instruction exception vector
-0321| $8000    t, \  $A: VM Memory Size in cells
-0322| $0000    t, \  $C: VM Options
-0323| $0000    t, \  $E: VM Reserved
-0324| $0000    t, \ $10: VM Reserved
-0325| $4689    t, \ $12: 0x89 'F'
-0326| $4854    t, \ $14: 'T'  'H'
-0327| $0A0D    t, \ $16: '\r' '\n'
-0328| $0A1A    t, \ $18: ^Z   '\n'
-0329| 0        t, \ $1A: For Length of Forth image, different from VM size
-0330| 0        t, \ $1C: For CRC of Forth image, not entire VM memory
-0331| $0001    t, \ $1E: Endianess check
-0332| #version t, \ $20: Version information
-0333| $0001    t, \ $22: Header options
+<pre><code>0321| 0        t, \  $0: PC: program counter, jump to start / reset vector
+0322| 0        t, \  $2: T, top of stack
+0323| (rp0)    t, \  $4: RP0, return stack pointer 
+0324| (sp0)    t, \  $6: SP0, variable stack pointer
+0325| 0        t, \  $8: Instruction exception vector
+0326| $8000    t, \  $A: VM Memory Size in cells
+0327| $0000    t, \  $C: VM Options
+0328| $0000    t, \  $E: VM Reserved
+0329| $0000    t, \ $10: VM Reserved
+0330| $4689    t, \ $12: 0x89 'F'
+0331| $4854    t, \ $14: 'T'  'H'
+0332| $0A0D    t, \ $16: '\r' '\n'
+0333| $0A1A    t, \ $18: ^Z   '\n'
+0334| 0        t, \ $1A: For Length of Forth image, different from VM size
+0335| 0        t, \ $1C: For CRC of Forth image, not entire VM memory
+0336| $0001    t, \ $1E: Endianess check
+0337| #version t, \ $20: Version information
+0338| $0001    t, \ $22: Header options
 </code></pre>
 
 <p>@bug There is something very weird going on with the initial header size
@@ -788,16 +816,16 @@ compiler and used by its internal machinery. The words are needed by
 them. This is an example of the metacompiler and the meta-compiled program
 being intermingled, which should be kept to a minimum.</p>
 
-<pre><code>0334| h: doVar   r&gt; ;    ( -- a : push return address and exit to caller )
-0335| h: doConst r&gt; @ ;  ( -- u : push value at return address and exit to caller )
+<pre><code>0339| h: doVar   r&gt; ;    ( -- a : push return address and exit to caller )
+0340| h: doConst r&gt; @ ;  ( -- u : push value at return address and exit to caller )
 </code></pre>
 
 <p>Here the address of <em>doVar</em> and <em>doConst</em> in the target is stored in
 variables accessible by the metacompiler, so <em>tconstant</em> and <em>tvariable</em> can
 compile references to them in the target.</p>
 
-<pre><code>0336| [t] doVar   tdoVar   meta!
-0337| [t] doConst tdoConst meta!
+<pre><code>0341| [t] doVar   tdoVar   meta!
+0342| [t] doConst tdoConst meta!
 </code></pre>
 
 <p>Next some space is reserved for variables which will have no name in the
@@ -826,12 +854,12 @@ vocabulary, or <em>_forth-wordlist</em>.</p>
 <p>None of these variables are set to any meaningful values here and will be
 updated during the metacompilation process.</p>
 
-<pre><code>0338| 0 tlocation cp                ( Dictionary Pointer: Set at end of file )
-0339| 0 tlocation root-voc          ( root vocabulary )
-0340| 0 tlocation editor-voc        ( editor vocabulary )
-0341| ( 0 tlocation assembler-voc   ( assembler vocabulary )
-0342| 0 tlocation _forth-wordlist   ( set at the end near the end of the file )
-0343| 0 tlocation current           ( WID to add definitions to )
+<pre><code>0343| 0 tlocation cp                ( Dictionary Pointer: Set at end of file )
+0344| 0 tlocation root-voc          ( root vocabulary )
+0345| 0 tlocation editor-voc        ( editor vocabulary )
+0346| ( 0 tlocation assembler-voc   ( assembler vocabulary )
+0347| 0 tlocation _forth-wordlist   ( set at the end near the end of the file )
+0348| 0 tlocation current           ( WID to add definitions to )
 </code></pre>
 
 <h2>Target Assembly Words</h2>
@@ -864,39 +892,39 @@ metacompiler works.</p>
 <p>The following words will be part of the main search order, in
 <em>forth-wordlist</em> and in the assembly search order.</p>
 
-<pre><code>0344| ( : nop      nop      ; ( -- : do nothing )
-0345| : dup      dup      ; ( n -- n n : duplicate value on top of stack )
-0346| : over     over     ; ( n1 n2 -- n1 n2 n1 : duplicate second value on stack )
-0347| : invert   invert   ; ( u -- u : bitwise invert of value on top of stack )
-0348| : um+      um+      ; ( u u -- u carry : addition with carry )
-0349| : +        +        ; ( u u -- u : addition without carry )
-0350| : um*      um*      ; ( u u -- ud : multiplication  )
-0351| : *        *        ; ( u u -- u : multiplication )
-0352| : swap     swap     ; ( n1 n2 -- n2 n1 : swap two values on stack )
-0353| : nip      nip      ; ( n1 n2 -- n2 : remove second item on stack )
-0354| : drop     drop     ; ( n -- : remove item on stack )
-0355| : @        @        ; ( a -- u : load value at address )
-0356| : !        !        ; ( u a -- : store *u* at address *a* )
-0357| : rshift   rshift   ; ( u1 u2 -- u : shift u2 by u1 places to the right )
-0358| : lshift   lshift   ; ( u1 u2 -- u : shift u2 by u1 places to the left )
-0359| : =        =        ; ( u1 u2 -- t : does u2 equal u1? )
-0360| : u&lt;       u&lt;       ; ( u1 u2 -- t : is u2 less than u1 )
-0361| : &lt;        &lt;        ; ( u1 u2 -- t : is u2 less than u1, signed version )
-0362| : and      and      ; ( u u -- u : bitwise and )
-0363| : xor      xor      ; ( u u -- u : bitwise exclusive or )
-0364| : or       or       ; ( u u -- u : bitwise or )
-0365| ( : sp@    sp@      ; ( ??? -- u : get stack depth )
-0366| ( : sp!    sp!      ; ( u -- ??? : set stack depth )
-0367| : 1-       1-       ; ( u -- u : decrement top of stack )
-0368| : 0=       0=       ; ( u -- t : if top of stack equal to zero )
-0369| h: yield?  yield?   ; ( u -- !!! : exit VM with *u* as return value )
-0370| h: rx?     rx?      ; ( -- c | -1 : fetch a single character, or EOF )
-0371| h: tx!     tx!      ; ( c -- : transmit single character )
-0372| : (save)   (save)   ; ( u1 u2 -- u : save memory from u1 to u2 inclusive )
-0373| : um/mod   um/mod   ; ( d  u2 -- rem div : mixed unsigned divide/modulo )
-0374| : /mod     /mod     ; ( u1 u2 -- rem div : signed divide/modulo )
-0375| : /        /        ; ( u1 u2 -- u : u1 divided by u2 )
-0376| : mod      mod      ; ( u1 u2 -- u : remainder of u1 divided by u2 )
+<pre><code>0349| ( : nop      nop      ; ( -- : do nothing )
+0350| : dup      dup      ; ( n -- n n : duplicate value on top of stack )
+0351| : over     over     ; ( n1 n2 -- n1 n2 n1 : duplicate second value on stack )
+0352| : invert   invert   ; ( u -- u : bitwise invert of value on top of stack )
+0353| : um+      um+      ; ( u u -- u carry : addition with carry )
+0354| : +        +        ; ( u u -- u : addition without carry )
+0355| : um*      um*      ; ( u u -- ud : multiplication  )
+0356| : *        *        ; ( u u -- u : multiplication )
+0357| : swap     swap     ; ( n1 n2 -- n2 n1 : swap two values on stack )
+0358| : nip      nip      ; ( n1 n2 -- n2 : remove second item on stack )
+0359| : drop     drop     ; ( n -- : remove item on stack )
+0360| : @        @        ; ( a -- u : load value at address )
+0361| : !        !        ; ( u a -- : store *u* at address *a* )
+0362| : rshift   rshift   ; ( u1 u2 -- u : shift u2 by u1 places to the right )
+0363| : lshift   lshift   ; ( u1 u2 -- u : shift u2 by u1 places to the left )
+0364| : =        =        ; ( u1 u2 -- t : does u2 equal u1? )
+0365| : u&lt;       u&lt;       ; ( u1 u2 -- t : is u2 less than u1 )
+0366| : &lt;        &lt;        ; ( u1 u2 -- t : is u2 less than u1, signed version )
+0367| : and      and      ; ( u u -- u : bitwise and )
+0368| : xor      xor      ; ( u u -- u : bitwise exclusive or )
+0369| : or       or       ; ( u u -- u : bitwise or )
+0370| ( : sp@    sp@      ; ( ??? -- u : get stack depth )
+0371| ( : sp!    sp!      ; ( u -- ??? : set stack depth )
+0372| : 1-       1-       ; ( u -- u : decrement top of stack )
+0373| : 0=       0=       ; ( u -- t : if top of stack equal to zero )
+0374| h: yield?  yield?   ; ( u -- !!! : exit VM with *u* as return value )
+0375| h: rx?     rx?      ; ( -- c | -1 : fetch a single character, or EOF )
+0376| h: tx!     tx!      ; ( c -- : transmit single character )
+0377| : (save)   (save)   ; ( u1 u2 -- u : save memory from u1 to u2 inclusive )
+0378| : um/mod   um/mod   ; ( d  u2 -- rem div : mixed unsigned divide/modulo )
+0379| : /mod     /mod     ; ( u1 u2 -- rem div : signed divide/modulo )
+0380| : /        /        ; ( u1 u2 -- u : u1 divided by u2 )
+0381| : mod      mod      ; ( u1 u2 -- u : remainder of u1 divided by u2 )
 </code></pre>
 
 <h3>Forth Implementation of Arithmetic Functions</h3>
@@ -977,15 +1005,15 @@ compile mode, and then they are inlined instead of being called, we can
 leave off <em>;</em> which would write an exit instruction on the end of the
 definition.</p>
 
-<pre><code>0377| there constant inline-start
-0378| ( : rp@ rp@   fallthrough; compile-only ( -- u )
-0379| ( : rp! rp!   fallthrough; compile-only ( u --, R: --- ??? )
-0380| : exit  exit  fallthrough; compile-only ( -- )
-0381| : &gt;r    &gt;r    fallthrough; compile-only ( u --, R: -- u )
-0382| : r&gt;    r&gt;    fallthrough; compile-only ( -- u, R: u -- )
-0383| : r@    r@    fallthrough; compile-only ( -- u )
-0384| : rdrop rdrop fallthrough; compile-only ( --, R: u -- )
-0385| there constant inline-end
+<pre><code>0382| there constant inline-start
+0383| ( : rp@ rp@   fallthrough; compile-only ( -- u )
+0384| ( : rp! rp!   fallthrough; compile-only ( u --, R: --- ??? )
+0385| : exit  exit  fallthrough; compile-only ( -- )
+0386| : &gt;r    &gt;r    fallthrough; compile-only ( u --, R: -- u )
+0387| : r&gt;    r&gt;    fallthrough; compile-only ( -- u, R: u -- )
+0388| : r@    r@    fallthrough; compile-only ( -- u )
+0389| : rdrop rdrop fallthrough; compile-only ( --, R: u -- )
+0390| there constant inline-end
 </code></pre>
 
 <p>Finally we can set the <em>assembler-voc</em> to variable, we will add to the
@@ -997,36 +1025,39 @@ to this problem, but they are not worth further complicating the Forth just
 yet.
 [last] [t] assembler-voc t!</p>
 
-<pre><code>0386| $2       tconstant cell  ( size of a cell in bytes )
-0387| $0       tvariable &gt;in   ( Hold character pointer when parsing input )
-0388| $0       tvariable state ( compiler state variable )
-0389| $0       tvariable hld   ( Pointer into hold area for numeric output )
-0390| $10      tvariable base  ( Current output radix )
-0391| $0       tvariable span  ( Hold character count received by expect   )
-0392| $8       tconstant #vocs ( number of vocabularies in allowed )
-0393| $400     tconstant b/buf ( size of a block )
-0394| 0        tvariable blk   ( current blk loaded, set in *cold* )
-0395| #version constant  ver   ( eForth version )
-0396| pad-area tconstant pad   ( pad variable - offset into temporary storage )
-0397| $ffff    tvariable dpl   ( number of places after fraction )
-0398| 0        tvariable &lt;literal&gt; ( holds execution vector for literal )
-0399| 0        tvariable &lt;boot&gt;  ( -- : execute program at startup )
-0400| 0        tvariable &lt;ok&gt;
+<pre><code>0391| $2       tconstant cell  ( size of a cell in bytes )
+0392| $0       tvariable &gt;in   ( Hold character pointer when parsing input )
+0393| $0       tvariable state ( compiler state variable )
+0394| $0       tvariable hld   ( Pointer into hold area for numeric output )
+0395| $10      tvariable base  ( Current output radix )
+0396| $0       tvariable span  ( Hold character count received by expect   )
+0397| $8       tconstant #vocs ( number of vocabularies in allowed )
+0398| $400     tconstant b/buf ( size of a block )
+0399| 0        tvariable blk   ( current blk loaded, set in *cold* )
+0400| #version constant  ver   ( eForth version )
+0401| pad-area tconstant pad   ( pad variable - offset into temporary storage )
+0402| $ffff    tvariable dpl   ( number of places after fraction )
+0403| 0        tvariable &lt;literal&gt; ( holds execution vector for literal )
+0404| 0        tvariable &lt;boot&gt;  ( -- : execute program at startup )
+0405| 0        tvariable &lt;ok&gt;
 </code></pre>
 
 <p>The following execution vectors would/will be added if there is enough
 space, it is very useful to have hooks into the system to change how
 the interpreter behaviour works. Being able to change how the Forth
-interpreter handles number parsing allows the processing of double or
-floating point numbers in a system that could otherwise not handle them.</p>
+interpreter handles number parsing, for example, allows the processing of 
+double or floating point numbers in a system that could otherwise not 
+handle them.</p>
 
-<pre><code>0401| ( 0        tvariable &lt;error&gt;      ( execution vector for interpreter error )
-0402| ( 0        tvariable &lt;interpret&gt;  ( execution vector for interpreter )
-0403| ( 0        tvariable &lt;abort&gt;      ( execution vector for abort handler )
-0404| ( 0        tvariable &lt;at-xy&gt;      ( execution vector for at-xy )
-0405| ( 0        tvariable &lt;page&gt;       ( execution vector for page )
-0406| ( 0        tvariable &lt;number&gt;     ( execution vector for &gt;number )
-0407| ( 0        tvariable hidden       ( vocabulary for hidden words )
+<pre><code>0406| ( 0        tvariable &lt;error&gt;      ( execution vector for interpreter error )
+0407| ( 0        tvariable &lt;interpret&gt;  ( execution vector for interpreter )
+0408| ( 0        tvariable &lt;quit&gt;       ( execution vector for quit )
+0409| ( 0        tvariable &lt;eval&gt;       ( execution vector for eval )
+0410| ( 0        tvariable &lt;abort&gt;      ( execution vector for abort handler )
+0411| ( 0        tvariable &lt;at-xy&gt;      ( execution vector for at-xy )
+0412| ( 0        tvariable &lt;page&gt;       ( execution vector for page )
+0413| ( 0        tvariable &lt;number&gt;     ( execution vector for &gt;number )
+0414| ( 0        tvariable hidden       ( vocabulary for hidden words )
 </code></pre>
 
 <h3>Basic Word Set</h3>
@@ -1072,17 +1103,17 @@ word name and associated concept it encapsulates), making words like
 a word like <em>2drop-0</em>, even if it is fairly clear what it does from its
 name.</p>
 
-<pre><code>0408| h: [-1] -1 ;                 ( -- -1 : space saving measure, push -1 )
-0409| h: 0x8000 $8000 ;            ( -- $8000 : space saving measure, push $8000 )
-0410| h: 2drop-0 drop fallthrough; ( n n -- 0 )
-0411| h: drop-0 drop fallthrough;  ( n -- 0 )
-0412| h: 0x0000 $0000 ;            ( -- $0000 : space/optimization, push $0000 )
-0413| h: state@ state @ ;          ( -- u )
-0414| h: first-bit 1 and ;         ( u -- u )
-0415| h: in! &gt;in ! ;               ( u -- )
-0416| h: in@ &gt;in @ ;               ( -- u )
-0417| h: base@ base @ ;            ( -- u )
-0418| h: base! base ! ;            ( u -- )
+<pre><code>0415| h: [-1] -1 ;                 ( -- -1 : space saving measure, push -1 )
+0416| h: 0x8000 $8000 ;            ( -- $8000 : space saving measure, push $8000 )
+0417| h: 2drop-0 drop fallthrough; ( n n -- 0 )
+0418| h: drop-0 drop fallthrough;  ( n -- 0 )
+0419| h: 0x0000 $0000 ;            ( -- $0000 : space/optimization, push $0000 )
+0420| h: state@ state @ ;          ( -- u )
+0421| h: first-bit 1 and ;         ( u -- u )
+0422| h: in! &gt;in ! ;               ( u -- )
+0423| h: in@ &gt;in @ ;               ( -- u )
+0424| h: base@ base @ ;            ( -- u )
+0425| h: base! base ! ;            ( u -- )
 </code></pre>
 
 <p>Now the implementation of the Forth interpreter without the apologies
@@ -1094,66 +1125,63 @@ are described by their stack comment entirely, like <em>2drop</em>, other like
 <em>cell+</em> require a reason for such a simple word (they embody a concept or
 they help hide implementation details).</p>
 
-<pre><code>0419| : 2drop drop drop ;         ( n n -- )
-0420| : 1+ 1 + ;                  ( n -- n : increment a value  )
-0421| : negate invert 1+ ;        ( n -- n : negate a number )
-0422| : - negate + ;              ( n1 n2 -- n : subtract n1 from n2 )
-0423| h: over- over - ;           ( u u -- u u )
-0424| h: over+ over + ;           ( u1 u2 -- u1 u1+2 )
-0425| : aligned dup first-bit + ; ( b -- a )
-0426| : bye -1 0 yield? nop ( $38 -throw ) ; ( -- : leave the interpreter )
-0427| h: cell- cell - ;           ( a -- a : adjust address to previous cell )
-0428| : cell+  cell + ;           ( a -- a : move address forward to next cell )
-0429| : cells 1 lshift ;          ( n -- n : convert cells count to address count )
-0430| : chars 1 rshift ;          ( n -- n : convert bytes to number of cells )
-0431| : ?dup dup if dup exit then ; ( n -- 0 | n n : duplicate non zero value )
-0432| : &gt;  swap  &lt; ;              ( n1 n2 -- t : signed greater than, n1 &gt; n2 )
-0433| : u&gt; swap u&lt; ;              ( u1 u2 -- t : unsigned greater than, u1 &gt; u2 )
-0434| h: u&gt;= u&lt; invert ;          ( u1 u2 -- t : unsigned greater/equal )
-0435| :  &lt;&gt;  = invert ;           ( n n -- t : not equal )
-0436| : 0&lt;&gt; 0= invert ;           ( n n -- t : not equal  to zero )
-0437| : 0&gt; 0 &gt; ;                  ( n -- t : greater than zero? )
-0438| : 0&lt; 0 &lt; ;                  ( n -- t : less than zero? )
-0439| : 2dup over over ;          ( n1 n2 -- n1 n2 n1 n2 )
-0440| : tuck swap over ;          ( n1 n2 -- n2 n1 n2 )
-0441| : +! tuck @ +  fallthrough; ( n a -- : increment value at *a* by *n* )
-0442| h: swap! swap ! ;           ( a u -- )
-0443| h: zero  0 swap! ;          ( a -- : zero value at address )
-0444| : 1+!   1  swap +! ;        ( a -- : increment value at address by 1 )
-0445| : 1-! [-1] swap +! ;        ( a -- : decrement value at address by 1 )
-0446| : 2! ( d a -- ) tuck ! cell+ ! ;      ( n n a -- )
-0447| : 2@ ( a -- d ) dup cell+ @ swap @ ;  ( a -- n n )
-0448| : get-current current @ ;             ( -- wid )
-0449| : set-current current ! ;             ( wid -- )
-0450| : bl =bl ;                            ( -- c )
-0451| : within over- &gt;r - r&gt; u&lt; ;           ( u lo hi -- t )
-0452| h: s&gt;d dup 0&lt; ;                       ( n -- d )
-0453| : abs s&gt;d if negate exit then ;       ( n -- u )
-0454| : source #tib 2@ ;                    ( -- a u )
-0455| h: tib source drop ;                  ( -- a )
-0456| : source-id id @ ;                    ( -- 0 | -1 )
-0457| : rot &gt;r swap r&gt; swap ;               ( n1 n2 n3 -- n2 n3 n1 )
-0458| : -rot rot rot ;                      ( n1 n2 n3 -- n3 n1 n2 )
-0459| h: rot-drop rot drop ;                ( n1 n2 n3 -- n2 n3 )
-0460| h: d0= or 0= ;                         ( d -- t )
-0461| h: dnegate invert &gt;r invert 1 um+ r&gt; + ; ( d -- d )
-0462| h: d+  &gt;r swap &gt;r um+ r&gt; + r&gt; + ;      ( d d -- d )
-0463| ( : 2swap &gt;r -rot r&gt; -rot ; ( n1 n2 n3 n4 -- n3 n4 n1 n2 )
-</code></pre>
-
-<p>: d&lt; rot <br />
-    2dup
-    &gt; if = nip nip if 0 exit then [-1] exit then 2drop u&lt; ; ( d -- f )</p>
-
-<pre><code>0464| ( : d&gt;  2swap d&lt; ;                      ( d -- t )
-0465| ( : du&gt; 2swap du&lt; ;                     ( d -- t )
-0466| ( : d= rot xor -rot xor xor 0= ;      ( d d -- t )
-0467| ( : d- dnegate d+ ;                   ( d d -- d )
-0468| ( : dabs  s&gt;d if dnegate exit then ;  ( d -- ud )
-0469| ( : even first-bit 0= ;               ( u -- t )
-0470| ( : odd even 0= ;                     ( u -- t )
-0471| ( : pow2? dup dup 1- and 0= and ;     ( u -- u|0 : is u a power of 2? )
-0472| ( : opposite? xor 0&lt; ;                ( n n -- f : true if opposite signs )
+<pre><code>0426| h: ?exit if rdrop exit then ; ( u --, R: xt -- xt| : conditional return )
+0427| : 2drop drop drop ;         ( n n -- )
+0428| : 1+ 1 + ;                  ( n -- n : increment a value  )
+0429| : negate invert 1+ ;        ( n -- n : negate a number )
+0430| : - negate + ;              ( n1 n2 -- n : subtract n1 from n2 )
+0431| h: over- over - ;           ( u u -- u u )
+0432| h: over+ over + ;           ( u1 u2 -- u1 u1+2 )
+0433| : aligned dup first-bit + ; ( b -- a )
+0434| : bye -1 0 yield? nop ( $38 -throw ) ; ( -- : leave the interpreter )
+0435| h: cell- cell - ;           ( a -- a : adjust address to previous cell )
+0436| : cell+  cell + ;           ( a -- a : move address forward to next cell )
+0437| : cells 1 lshift ;          ( n -- n : convert cells count to address count )
+0438| : chars 1 rshift ;          ( n -- n : convert bytes to number of cells )
+0439| : ?dup dup if dup exit then ; ( n -- 0 | n n : duplicate non zero value )
+0440| : &gt;  swap  &lt; ;              ( n1 n2 -- t : signed greater than, n1 &gt; n2 )
+0441| : u&gt; swap u&lt; ;              ( u1 u2 -- t : unsigned greater than, u1 &gt; u2 )
+0442| :  &lt;&gt;  = invert ;           ( n n -- t : not equal )
+0443| : 0&lt;&gt; 0= invert ;           ( n n -- t : not equal  to zero )
+0444| : 0&gt; 0 &gt; ;                  ( n -- t : greater than zero? )
+0445| : 0&lt; 0 &lt; ;                  ( n -- t : less than zero? )
+0446| : 2dup over over ;          ( n1 n2 -- n1 n2 n1 n2 )
+0447| : tuck swap over ;          ( n1 n2 -- n2 n1 n2 )
+0448| : +! tuck @ +  fallthrough; ( n a -- : increment value at *a* by *n* )
+0449| h: swap! swap ! ;           ( a u -- )
+0450| h: zero  0 swap! ;          ( a -- : zero value at address )
+0451| : 1+!   1  swap +! ;        ( a -- : increment value at address by 1 )
+0452| : 1-! [-1] swap +! ;        ( a -- : decrement value at address by 1 )
+0453| : 2! ( d a -- ) tuck ! cell+ ! ;      ( n n a -- )
+0454| : 2@ ( a -- d ) dup cell+ @ swap @ ;  ( a -- n n )
+0455| : get-current current @ ;             ( -- wid )
+0456| : set-current current ! ;             ( wid -- )
+0457| : bl =bl ;                            ( -- c )
+0458| : within over- &gt;r - r&gt; u&lt; ;           ( u lo hi -- t )
+0459| h: s&gt;d dup 0&lt; ;                       ( n -- d )
+0460| : abs s&gt;d if negate exit then ;       ( n -- u )
+0461| : source #tib 2@ ;                    ( -- a u )
+0462| h: tib source drop ;                  ( -- a )
+0463| : source-id id @ ;                    ( -- 0 | -1 )
+0464| : rot &gt;r swap r&gt; swap ;               ( n1 n2 n3 -- n2 n3 n1 )
+0465| : -rot rot rot ;                      ( n1 n2 n3 -- n3 n1 n2 )
+0466| h: rot-drop rot drop ;                ( n1 n2 n3 -- n2 n3 )
+0467| h: d0= or 0= ;                         ( d -- t )
+0468| h: dnegate invert &gt;r invert 1 um+ r&gt; + ; ( d -- d )
+0469| h: d+  &gt;r swap &gt;r um+ r&gt; + r&gt; + ;      ( d d -- d )
+0470| ( : 2swap &gt;r -rot r&gt; -rot ; ( n1 n2 n3 n4 -- n3 n4 n1 n2 )
+0471| ( : d&lt; rot   )
+0472| (     2dup   )
+0473| (     &gt; if = nip nip if 0 exit then [-1] exit then 2drop u&lt; ; ( d -- f )
+0474| ( : d&gt;  2swap d&lt; ;                     ( d -- t )
+0475| ( : du&gt; 2swap du&lt; ;                    ( d -- t )
+0476| ( : d=  rot = -rot = and ;            ( d d -- t )
+0477| ( : d- dnegate d+ ;                   ( d d -- d )
+0478| ( : dabs  s&gt;d if dnegate exit then ;  ( d -- ud )
+0479| ( : even first-bit 0= ;               ( u -- t )
+0480| ( : odd even 0= ;                     ( u -- t )
+0481| ( : pow2? dup dup 1- and 0= and ;     ( u -- u|0 : is u a power of 2? )
+0482| ( : opposite? xor 0&lt; ;                ( n n -- f : true if opposite signs )
 </code></pre>
 
 <p><em>execute</em> requires an understanding of the return stack, much like
@@ -1167,8 +1195,8 @@ jump back to <em>executes</em> caller.</p>
 
 <p><em>@execute</em> is similar but it only executes the token if it is non-zero.</p>
 
-<pre><code>0473| : execute &gt;r ;                   ( cfa -- : execute a function )
-0474| h: @execute @ ?dup if &gt;r then ;  ( cfa -- )
+<pre><code>0483| : execute &gt;r ;                   ( cfa -- : execute a function )
+0484| h: @execute @ ?dup if &gt;r then ;  ( cfa -- )
 </code></pre>
 
 <p>As the virtual machine is only addressable by cells, and not by characters,
@@ -1176,11 +1204,11 @@ the words <em>c@</em> and <em>c!</em> cannot be defined as simple assembly primi
 they must be defined in terms of <em>@</em> and <em>!</em>. It is not difficult to do,
 but does mean these two primitives are slower than might be first thought.</p>
 
-<pre><code>0475| : c@ dup@ swap first-bit 3 lshift rshift $FF and ; ( b --c : char load )
-0476| : c! ( c b -- : store character at address )
-0477|   tuck first-bit 3 lshift dup&gt;r
-0478|   lshift over @
-0479|   $FF r&gt; 8 xor lshift and or swap! ;
+<pre><code>0485| : c@ dup@ swap first-bit 3 lshift rshift $FF and ; ( b --c : char load )
+0486| : c! ( c b -- : store character at address )
+0487|   tuck first-bit 3 lshift dup&gt;r
+0488|   lshift over @
+0489|   $FF r&gt; 8 xor lshift and or swap! ;
 </code></pre>
 
 <p><em>command?</em> will be used later for words that are state aware. State awareness
@@ -1190,7 +1218,7 @@ they are understood. This is best done elsewhere. <em>command?</em> is used to
 determine if the interpreter is in command mode or not, it returns true
 if it is.</p>
 
-<pre><code>0480| h: command? state@ 0= ;               ( -- t )
+<pre><code>0490| h: command? state@ 0= ;               ( -- t )
 </code></pre>
 
 <p><em>here</em>, <em>align</em>, <em>cp!</em> and <em>allow</em> all manipulate the dictionary pointer,
@@ -1202,9 +1230,9 @@ enforcing that the value written is aligned.</p>
 compiling control structures into words, so is used by words like <em>if</em>,
 and has other uses as well.</p>
 
-<pre><code>0481| : here cp @ ;                         ( -- a )
-0482| : align here fallthrough;             ( -- )
-0483| h: cp! aligned cp ! ;                 ( n -- )
+<pre><code>0491| : here cp @ ;                         ( -- a )
+0492| : align here fallthrough;             ( -- )
+0493| h: cp! aligned cp ! ;                 ( n -- )
 </code></pre>
 
 <p><em>allot</em> is used in Forth to allocate memory after using <em>create</em> to make
@@ -1219,7 +1247,7 @@ $cafe  x $10 !     ( Store '$cafe' at element 16 in array )
 
 
 
-0484| : allot cp +! ;                        ( n -- )
+0494| : allot cp +! ;                        ( n -- )
 </code></pre>
 
 <p><em>2&gt;r</em> and <em>2r&gt;</em> are like <em>rot</em> and <em>-rot</em>, useful but they should not
@@ -1230,8 +1258,8 @@ The optimizer might also change a call to one of these words into a jump,
 which should be avoided as it could cause problems in edge cases, so do not
 use these words directly before an <em>exit</em> or <em>;</em>.</p>
 
-<pre><code>0485| h: 2&gt;r rxchg swap &gt;r &gt;r ;              ( u1 u2 --, R: -- u1 u2 )
-0486| h: 2r&gt; r&gt; r&gt; swap rxchg nop ;          ( -- u1 u2, R: u1 u2 -- )
+<pre><code>0495| h: 2&gt;r rxchg swap &gt;r &gt;r ;              ( u1 u2 --, R: -- u1 u2 )
+0496| h: 2r&gt; r&gt; r&gt; swap rxchg nop ;          ( -- u1 u2, R: u1 u2 -- )
 </code></pre>
 
 <p><em>doNext</em> needs to be defined before we can use <em>for...next</em> loops, the
@@ -1265,22 +1293,22 @@ can change the program flow to either jump over the next cell, or jump
 to the address contained in the next cell. Understanding the simpler
 <em>doConst</em> and <em>doVar</em> helps in understanding this word.</p>
 
-<pre><code>0487| h: doNext 2r&gt; ?dup if 1- &gt;r @ &gt;r exit then cell+ &gt;r ;
-0488| [t] doNext tdoNext meta!
+<pre><code>0497| h: doNext 2r&gt; ?dup if 1- &gt;r @ &gt;r exit then cell+ &gt;r ;
+0498| [t] doNext tdoNext meta!
 </code></pre>
 
 <p><em>min</em> and <em>max</em> are standard operations in many languages, they operate
 on signed values. Note how they are factored to use the <em>mux</em> word, with
 <em>min</em> falling through into it, and <em>max</em> calling <em>mux</em>, all to save on space.</p>
 
-<pre><code>0489| : min 2dup&lt; fallthrough;              ( n n -- n )
-0490| h: mux if drop exit then nip ;        ( n1 n2 b -- n : multiplex operation )
-0491| : max 2dup &gt; mux ;                    ( n n -- n )
-0492| ( : 2over 2&gt;r 2dup 2r&gt; 2swap ; )
-0493| ( : 2nip 2&gt;r 2drop 2r&gt; nop ; )
-0494| ( : 4dup 2over 2over ; )
-0495| ( : dmin 4dup d&lt; if 2drop exit else 2nip ; )
-0496| ( : dmax 4dup d&gt; if 2drop exit else 2nip ; )
+<pre><code>0499| : min 2dup&lt; fallthrough;              ( n n -- n )
+0500| h: mux if drop exit then nip ;        ( n1 n2 b -- n : multiplex operation )
+0501| : max 2dup &gt; mux ;                    ( n n -- n )
+0502| ( : 2over 2&gt;r 2dup 2r&gt; 2swap ; )
+0503| ( : 2nip 2&gt;r 2drop 2r&gt; nop ; )
+0504| ( : 4dup 2over 2over ; )
+0505| ( : dmin 4dup d&lt; if 2drop exit else 2nip ; )
+0506| ( : dmax 4dup d&gt; if 2drop exit else 2nip ; )
 </code></pre>
 
 <p><em>key</em> retrieves a single character of input, it is a vectored word so the
@@ -1289,7 +1317,7 @@ method used to get data can be changed.</p>
 <p>It calls <em>bye</em> if the End of File character is returned (-1, which is
 outside the normal byte range).</p>
 
-<pre><code>0497| : key &lt;key&gt; @execute dup [-1] = if bye then ; ( -- c )
+<pre><code>0507| : key &lt;key&gt; @execute dup [-1] = if bye then ; ( -- c )
 </code></pre>
 
 <p><em>/string</em>, <em>+string</em> and <em>count</em> are for manipulating strings, <em>count</em>
@@ -1298,10 +1326,10 @@ to advance through an array of byte data, whereas <em>/string</em> is used with
 a address and length pair that is already on the stack. <em>/string</em> will not
 advance the pair beyond the end of the string.</p>
 
-<pre><code>0498| : /string over min rot over+ -rot - ;  ( b u1 u2 -- b u : advance string u2 )
-0499| h: +string 1 /string ;                 ( b u -- b u : )
-0500| : count dup 1+ swap c@ ;               ( b -- b u )
-0501| h: string@ over c@ ;                   ( b u -- b u c )
+<pre><code>0508| : /string over min rot over+ -rot - ;  ( b u1 u2 -- b u : advance string u2 )
+0509| h: +string 1 /string ;                 ( b u -- b u : )
+0510| : count dup 1+ swap c@ ;               ( b -- b u )
+0511| h: string@ over c@ ;                   ( b u -- b u c )
 </code></pre>
 
 <p><em>crc</em> computes the 16-bit CCITT CRC over a segment of memory, and <em>ccitt</em>
@@ -1309,21 +1337,21 @@ is the word that does the polynomial checking. It can be also be used as a
 crude Pseudo Random Number Generator. CRC routines are useful for detecting
 memory corruption in the Forth image.</p>
 
-<pre><code>0502| h: ccitt ( crc c -- crc : crc polynomial $1021 AKA "x16 + x12 + x5 + 1" )
-0503|   over $8 rshift xor   ( crc x )
-0504|   dup  $4 rshift xor   ( crc x )
-0505|   dup  $5 lshift xor   ( crc x )
-0506|   dup  $C lshift xor   ( crc x )
-0507|   swap $8 lshift xor ; ( crc )
-0508| : crc ( b u -- u : calculate ccitt-ffff CRC )
-0509|   [-1] ( -1 = 0xffff ) &gt;r
-0510|   begin
-0511|     dup
-0512|   while
-0513|    string@ r&gt; swap ccitt &gt;r +string
-0514|   repeat 2drop r&gt; ;
-0515| ( : random ( -- u : pseudo random number )
-0516| (  seed @ 0= seed toggle seed @ 0 ccitt dup seed ! ; )
+<pre><code>0512| h: ccitt ( crc c -- crc : crc polynomial $1021 AKA "x16 + x12 + x5 + 1" )
+0513|   over $8 rshift xor   ( crc x )
+0514|   dup  $4 rshift xor   ( crc x )
+0515|   dup  $5 lshift xor   ( crc x )
+0516|   dup  $C lshift xor   ( crc x )
+0517|   swap $8 lshift xor ; ( crc )
+0518| : crc ( b u -- u : calculate ccitt-ffff CRC )
+0519|   [-1] ( -1 = 0xffff ) &gt;r
+0520|   begin
+0521|     ?dup
+0522|   while
+0523|    string@ r&gt; swap ccitt &gt;r +string
+0524|   repeat r&gt; nip ;
+0525| ( : random ( -- u : pseudo random number )
+0526| (  seed @ 0= seed toggle seed @ 0 ccitt dup seed ! ; )
 </code></pre>
 
 <p><em>address</em> and <em>@address</em> are for use with the previous word point in the word
@@ -1336,15 +1364,15 @@ of marking words as immediate is, to use unused bits in a word header, or to
 place <em>immediate</em> words in a special vocabulary which a minority of Forths
 do. Most Forths use the <em>unused-bits-in-word-header</em> approach.</p>
 
-<pre><code>0517| h: @address @ fallthrough;             ( a -- a )
-0518| h: address $3FFF and ;                 ( a -- a : mask off address bits )
+<pre><code>0527| h: @address @ fallthrough;             ( a -- a )
+0528| h: address $3FFF and ;                 ( a -- a : mask off address bits )
 </code></pre>
 
 <p><em>last</em> gets a pointer to the most recently defined word, which is used to
 implement words like <em>recurse</em>, as well as in words which must traverse the
 current word list.</p>
 
-<pre><code>0519| h: last get-current @address ;         ( -- pwd )
+<pre><code>0529| h: last get-current @address ;         ( -- pwd )
 </code></pre>
 
 <p>A few character emitting words will now be defined, it should be obvious
@@ -1357,14 +1385,14 @@ necessary in a hosted Forth to have such a mechanism, but it can be added
 back in as needed, we will see commented out relics of this features later,
 when we see <em>^h</em> and <em>ktap</em>.</p>
 
-<pre><code>0520| ( h: echo &lt;echo&gt; @execute ; )          ( c -- )
-0521| : emit &lt;emit&gt; @execute ;               ( c -- : write out a char )
-0522| : cr =cr emit =lf emit ;               ( -- : emit a newline )
-0523| : space     1 fallthrough;             ( -- : emit a space )
-0524| h: spaces =bl fallthrough;             ( +n -- )
-0525| h: nchars                              ( +n c -- : emit c n times )
-0526|    swap 0 max for aft dup emit then next drop ;
-0527| h: colon-space [char] : emit space ;               ( -- )
+<pre><code>0530| ( h: echo &lt;echo&gt; @execute ; )          ( c -- )
+0531| : emit &lt;emit&gt; @execute ;               ( c -- : write out a char )
+0532| : cr =cr emit =lf emit ;               ( -- : emit a newline )
+0533| : space     1 fallthrough;             ( -- : emit a space )
+0534| h: spaces =bl fallthrough;             ( +n -- )
+0535| h: nchars                              ( +n c -- : emit c n times )
+0536|    swap 0 max for aft dup emit then next drop ;
+0537| h: colon-space [char] : emit space ;               ( -- )
 </code></pre>
 
 <p><em>depth</em> and <em>pick</em> require knowledge of how this Forth implements its
@@ -1386,15 +1414,15 @@ but it is more complex and can be done like this:</p>
 
 <p>: pick ?dup if swap &gt;r 1- pick r&gt; swap exit then dup ;</p>
 
-<pre><code>0528| h: vrelative cells sp@ swap - ;  ( u -- u : position relative to sp )
-0529| : depth sp0 vrelative chars 1- ; ( -- u : get current depth )
-0530| : pick vrelative @ ;             ( vn...v0 u -- vn...v0 vu )
+<pre><code>0538| h: vrelative cells sp@ swap - ;  ( u -- u : position relative to sp )
+0539| : depth sp0 vrelative chars 1- ; ( -- u : get current depth )
+0540| : pick vrelative @ ;             ( vn...v0 u -- vn...v0 vu )
 </code></pre>
 
 <p><em>ndrop</em> removes a variable number of items off the variable stack, which
 is sometimes needed for cleaning things up before exiting a word.</p>
 
-<pre><code>0531| h: ndrop vrelative sp! drop ; ( 0u...nu n -- : drop n cells )
+<pre><code>0541| h: ndrop vrelative sp! drop ; ( 0u...nu n -- : drop n cells )
 </code></pre>
 
 <p><em>&gt;char</em> takes a character and converts it to an underscore if it is not
@@ -1403,28 +1431,28 @@ which may contain spaces, tabs, or non-printable. <em>list</em> and <em>dump</em
 this word. <em>typist</em> can either use <em>&gt;char</em> to print out a memory range
 or it can print out the value regardless if it is printable.</p>
 
-<pre><code>0532| h: &gt;char dup $7F =bl within if drop [char] _ then ; ( c -- c )
-0533| : type 0 fallthrough;                  ( b u -- )
-0534| h: typist                              ( b u f -- : print a string )
-0535|   &gt;r begin dup while
-0536|     swap count r@
-0537|     if
-0538|       &gt;char
-0539|     then
-0540|     emit
-0541|     swap 1-
-0542|   repeat
-0543|   rdrop 2drop ;
-0544| h: print count type ;                    ( b -- )
-0545| h: $type [-1] typist ;                   ( b u --  )
+<pre><code>0542| h: &gt;char dup $7F =bl within if drop [char] _ then ; ( c -- c )
+0543| : type 0 fallthrough;                  ( b u -- )
+0544| h: typist                              ( b u f -- : print a string )
+0545|   &gt;r begin dup while
+0546|     swap count r@
+0547|     if
+0548|       &gt;char
+0549|     then
+0550|     emit
+0551|     swap 1-
+0552|   repeat
+0553|   rdrop 2drop ;
+0554| h: print count type ;                    ( b -- )
+0555| h: $type [-1] typist ;                   ( b u --  )
 </code></pre>
 
 <p><em>cmove</em> and <em>fill</em> are generic memory related functions for moving blocks
 of memory around and setting blocks of memory to a specific value
 respectively.</p>
 
-<pre><code>0546| : cmove for aft &gt;r dup c@ r@ c! 1+ r&gt; 1+ then next 2drop ; ( b b u -- )
-0547| : fill swap for swap aft 2dup c! 1+ then next 2drop ; ( b u c -- )
+<pre><code>0556| : cmove for aft &gt;r dup c@ r@ c! 1+ r&gt; 1+ then next 2drop ; ( b b u -- )
+0557| : fill  swap for swap aft 2dup c! 1+ then next 2drop ;     ( b u c -- )
 </code></pre>
 
 <h3>Exception Handling</h3>
@@ -1464,20 +1492,20 @@ normal.</p>
 
 
 
-0548| : catch ( i*x xt -- j*x 0 | i*x n )
-0549|   sp@       &gt;r
-0550|   handler @ &gt;r
-0551|   rp@ handler !
-0552|   execute
-0553|   r&gt; handler !
-0554|   r&gt; drop-0 ;
-0555| : throw ( k*x n -- k*x | i*x n )
-0556|   ?dup if
-0557|     handler @ rp!
-0558|     r&gt; handler !
-0559|     rxchg ( *rxchg* is equivalent to 'r&gt; swap &gt;r' )
-0560|     sp! drop r&gt;
-0561|   then ;
+0558| : catch ( i*x xt -- j*x 0 | i*x n )
+0559|   sp@       &gt;r
+0560|   handler @ &gt;r
+0561|   rp@ handler !
+0562|   execute
+0563|   r&gt; handler !
+0564|   r&gt; drop-0 ;
+0565| : throw ( k*x n -- k*x | i*x n )
+0566|   ?dup if
+0567|     handler @ rp!
+0568|     r&gt; handler !
+0569|     rxchg ( *rxchg* is equivalent to 'r&gt; swap &gt;r' )
+0570|     sp! drop r&gt;
+0571|   then ;
 </code></pre>
 
 <p>Negative numbers take up two cells in a word definition when compiled into
@@ -1494,21 +1522,20 @@ branch to <em>-throw</em>. The virtual machine also puts a number indicating wha
 the exception was on the top of the stack so it is possible to determine
 what went wrong.</p>
 
-<pre><code>0562| h: -throw negate throw ;  ( u -- : negate and throw )
-0563| [t] -throw 2/ 4 tcells t!
+<pre><code>0572| h: -throw negate throw ;  ( u -- : negate and throw )
+0573| [t] -throw 2/ 4 tcells t!
 </code></pre>
 
-<p><em>?ndepth</em> throws an exception if a certain number of items on the stack
+<p><em>?depth</em> throws an exception if a certain number of items on the stack
 do not exist. It is possible to use this primitive to implement some basic
 checks to make sure that words are passed the correct number of arguments.</p>
 
-<p>By using <em>?ndepth</em> strategically it is possible to catch errors quite
+<p>By using <em>?depth</em> strategically it is possible to catch errors quite
 quickly with minimal overhead in speed and size by selecting only a few
 words to put depth checking in.</p>
 
-<pre><code>0564| h: 1depth 1 fallthrough; ( ??? -- : check depth is at least one )
-0565| h: ?ndepth depth 1- u&gt; if 4 -throw exit then ; ( ??? n -- check depth )
-0566| h: 2depth 2 ?ndepth ;    ( ??? -- :  check depth is at least two )
+<pre><code>0574| h: 1depth 1 fallthrough; ( ??? -- : check depth is at least one )
+0575| h: ?depth depth &lt; ?exit 4 -throw ; ( ??? n -- check depth )
 </code></pre>
 
 <h2>Numeric Output</h2>
@@ -1545,9 +1572,9 @@ there are only 36 alphanumeric characters (ignoring character case) meaning
 higher numbers cannot be represented. If the radix is outside of this range,
 then base is set back to its default, decimal, and an exception is thrown.</p>
 
-<pre><code>0567| : decimal  $A base! ;                      ( -- )
-0568| : hex     $10 base! ;                      ( -- )
-0569| h: radix base@ dup 2 - $22 u&gt; if decimal $28 -throw exit then ; ( -- u )
+<pre><code>0576| : decimal  $A base! ;                      ( -- )
+0577| : hex     $10 base! ;                      ( -- )
+0578| h: radix base@ dup 2 - $22 u&gt; if decimal $28 -throw exit then ; ( -- u )
 </code></pre>
 
 <p><em>digit</em> converts a number to its character representation, but it only
@@ -1591,10 +1618,10 @@ is called and the base variable is only accessed with the <em>radix</em> word.
 This combination of checking catches most errors that occur and makes sure
 they do not propagate.</p>
 
-<pre><code>0570| : hold  hld @ 1- dup hld ! c! fallthrough;             ( c -- )
-0571| h: ?hold pad $100 - hld @ u&gt; if $11 -throw exit then ; ( -- )
-0572| h: extract dup&gt;r um/mod rxchg um/mod r&gt; rot ;          ( ud ud -- ud u )
-0573| h: digit 9 over &lt; 7 and + [char] 0 + ;                 ( u -- c )
+<pre><code>0579| : hold  hld @ 1- dup hld ! c! fallthrough;             ( c -- )
+0580| h: ?hold hld @ pad $80 - u&gt; ?exit $11 -throw ; ( -- )
+0581| h: extract dup&gt;r um/mod rxchg um/mod r&gt; rot ;          ( ud ud -- ud u )
+0582| h: digit 9 over &lt; 7 and + [char] 0 + ;                 ( u -- c )
 </code></pre>
 
 <p>The quartet formed by "&lt;# # #s #&gt;" look intimidating to the new comer, but
@@ -1617,21 +1644,21 @@ in the current output base, and can be printed or copied.</p>
 <p>These words will go on to form more convenient words for numeric output,
 like <em>.</em>, or <em>u.r</em>.</p>
 
-<pre><code>0574| : #&gt; 2drop hld @ pad over- ;              ( w -- b u )
-0575| : # 2depth 0 base@ extract digit hold ;   ( d -- d )
-0576| : #s begin # 2dup d0= until ;             ( d -- 0 )
-0577| : &lt;# pad hld ! ;                          ( -- )
+<pre><code>0583| : #&gt; 2drop hld @ pad over- ;                ( w -- b u )
+0584| : #  2 ?depth 0 base@ extract digit hold ;  ( d -- d )
+0585| : #s begin # 2dup d0= until ;               ( d -- 0 )
+0586| : &lt;# pad hld ! ;                            ( -- )
 </code></pre>
 
 <p><em>sign</em> is used with the Pictured Numeric Output words to add a sign character
-if the number is negative, <em>str</em> is then defined to convert a number in any
+if the number is negative, <em>(.)</em> is then defined to convert a number in any
 base to its signed representation, in actual use however we will only use
-<em>str</em> for base 10 numeric output, we usually do not want to print the sign
+<em>(.)</em> for base 10 numeric output, we usually do not want to print the sign
 of a number when operating with a non-decimal base.</p>
 
-<pre><code>0578| : sign  0&lt; if [char] - hold exit then ;     ( n -- )
-0579| h: str ( n -- b u : convert a signed integer to a numeric string )
-0580|   dup&gt;r abs 0 &lt;# #s r&gt; sign #&gt; ;
+<pre><code>0587| : sign  0&lt; if [char] - hold exit then ;     ( n -- )
+0588| h: (.) ( n -- b u : convert a signed integer to a numeric string )
+0589|   dup&gt;r abs 0 &lt;# #s r&gt; sign #&gt; ;
 </code></pre>
 
 <p><em>.r</em>, <em>u.r</em> are used as the basis of further words with a more controlled
@@ -1644,16 +1671,16 @@ data that is for human consumption.</p>
 a signed number when operating in decimal, and an unsigned one otherwise,
 again with a trailing space. Neither adds leading spaces.</p>
 
-<pre><code>0581| h: (u.) 0 &lt;# #s #&gt; ;             ( u -- b u : turn *u* into number string )
-0582| : u.r &gt;r (u.) r&gt; fallthrough;    ( u +n -- : print u right justified by +n)
-0583| h: adjust over- spaces type ;    ( b n n -- )
-0584| h: 5u.r 5 u.r ;                  ( u -- )
-0585| ( :  .r &gt;r str r&gt; adjust ;       ( n n -- : print n, right justified by +n )
-0586| : u.  (u.) space type ;          ( u -- : print unsigned number )
-0587| :  .  radix $A xor if u. exit then str space type ; ( n -- print number )
-0588| ( : &gt;base swap base @ &gt;r base ! execute r&gt; base ! ; )
-0589| ( : d. $a  '  . &gt;base ; )
-0590| ( : h. $10 ' u. &gt;base ; )
+<pre><code>0590| h: (u.) 0 &lt;# #s #&gt; ;             ( u -- b u : turn *u* into number string )
+0591| : u.r &gt;r (u.) r&gt; fallthrough;    ( u +n -- : print u right justified by +n)
+0592| h: adjust over- spaces type ;    ( b n n -- )
+0593| h: 5u.r 5 u.r ;                  ( u -- )
+0594| ( :  .r &gt;r (.)( r&gt; adjust ;       ( n n -- : print n, right justified by +n )
+0595| : u.  (u.) space type ;          ( u -- : print unsigned number )
+0596| :  .  radix $A xor if u. exit then (.) space type ; ( n -- print number )
+0597| ( : &gt;base swap base @ &gt;r base ! execute r&gt; base ! ; )
+0598| ( : d. $a  '  . &gt;base ; )
+0599| ( : h. $10 ' u. &gt;base ; )
 </code></pre>
 
 <p><em>holds</em> and <em>.base</em> can be defined as so:</p>
@@ -1671,8 +1698,8 @@ address:</p>
 <p>Words that use the numeric output words can be defined, <em>.free</em> can now
 be defined which prints out the amount of space left in memory for programs</p>
 
-<pre><code>0591| h: unused $4000 here - ;         ( -- u : unused program space )
-0592| h: .free unused u. ;             ( -- : print unused program space )
+<pre><code>0600| h: unused $4000 here - ;         ( -- u : unused program space )
+0601| h: .free unused u. ;             ( -- : print unused program space )
 </code></pre>
 
 <h3>String Handling and Input</h3>
@@ -1712,20 +1739,20 @@ a boolean answer, unlike <a href="http://www.cplusplus.com/reference/cstring/str
 
 <p><em>down</em> aligns a cell down to the next aligned address.</p>
 
-<pre><code>0593| h: down cell negate and ; ( a -- a : align down )
-0594| : pack$ ( b u a -- a ) \ null fill
-0595|   aligned dup&gt;r over
-0596|   dup down 
-0597|   - over+ zero 2dup c! 1+ swap cmove r&gt; ;
-0598| : =string ( a1 u2 a1 u2 -- t : string equality )
-0599|   &gt;r swap r&gt; ( a1 a2 u1 u2 )
-0600|   over-xor if drop 2drop-0 exit then
-0601|   for ( a1 a2 )
-0602|     aft
-0603|       count &gt;r swap count r&gt; xor
-0604|       if rdrop 2drop-0 exit then
-0605|     then
-0606|   next 2drop [-1] ;
+<pre><code>0602| h: down cell negate and ; ( a -- a : align down )
+0603| : pack$ ( b u a -- a ) \ null fill
+0604|   aligned dup&gt;r over
+0605|   dup down 
+0606|   - over+ zero 2dup c! 1+ swap ( 2dup 0 fill ) cmove r&gt; ;
+0607| : compare ( a1 u2 a1 u2 -- n : string equality )
+0608|   rot
+0609|   over- ?dup if &gt;r 2drop r&gt; nip exit then
+0610|   for ( a1 a2 )
+0611|     aft
+0612|       count rot count rot - ?dup
+0613|       if nip nip rdrop exit then
+0614|     then
+0615|   next 2drop-0 ;
 </code></pre>
 
 <p><em>^h</em> and <em>ktap</em> are commented out as they are not needed, they deal with
@@ -1783,7 +1810,7 @@ call this word, <em>tap</em> uses echo to echo back the character - it is curren
 commented out as this is handled by the terminal emulator but would be
 needed for serial communication.</p>
 
-<pre><code>0607| h: tap ( dup echo ) over c! 1+ ; ( bot eot cur c -- bot eot cur )
+<pre><code>0616| h: tap ( dup echo ) over c! 1+ ; ( bot eot cur c -- bot eot cur )
 </code></pre>
 
 <p><em>accept</em> takes an buffer input buffer and returns a pointer and line length
@@ -1794,27 +1821,27 @@ conditions. It calls <em>tap</em> to do the work. In an alternate version it cal
 the execution vector <em>&lt;tap&gt;</em>, which is usually set to <em>ktap</em>, which is shown
 as a commented out line.</p>
 
-<pre><code>0608| : accept ( b u -- b u )
-0609|   over+ over
-0610|   begin
-0611|     2dupxor
-0612|   while
-0613|     key dup =lf xor if tap else drop nip dup then
-0614|     \ The alternative *accept* code replaces the line above:
-0615|     \
-0616|     \   key  dup =bl - 95 u&lt; if tap else &lt;tap&gt; @execute then
-0617|     \
-0618|   repeat drop over- ;
+<pre><code>0617| : accept ( b u -- b u )
+0618|   over+ over
+0619|   begin
+0620|     2dupxor
+0621|   while
+0622|     key dup =lf xor if tap else drop nip dup then
+0623|     \ The alternative *accept* code replaces the line above:
+0624|     \
+0625|     \   key  dup =bl - 95 u&lt; if tap else &lt;tap&gt; @execute then
+0626|     \
+0627|   repeat drop over- ;
 </code></pre>
 
 <p><em>&lt;expect&gt;</em> is set to <em>accept</em> later on in this file, but can be changed if
 needed. <em>expect</em> and <em>query</em> both call <em>accept</em> this way. <em>query</em> uses the
 systems input buffer and stores the result in a know location so that the
 rest of the interpreter can use the results. <em>expect</em> gets a buffer from the
-use and stores the length of the resulting string in <em>span</em>.</p>
+user and stores the length of the resulting string in <em>span</em>.</p>
 
-<pre><code>0619| : expect &lt;expect&gt; @execute span ! drop ;                     ( b u -- )
-0620| : query tib tib-length &lt;expect&gt; @execute #tib ! drop-0 in! ; ( -- )
+<pre><code>0628| : expect &lt;expect&gt; @execute span ! drop ;                     ( b u -- )
+0629| : query tib tib-length &lt;expect&gt; @execute #tib ! drop-0 in! ; ( -- )
 </code></pre>
 
 <p><em>query</em> stores its results in the Terminal Input Buffer (TIB), which is way
@@ -1951,22 +1978,22 @@ as well, they are immediate words and will be explained later.</p>
 <p><em>nfa</em> and <em>cfa</em> both take a pointer to the <em>PWD</em> field and adjust it to
 point to different sections of the word.</p>
 
-<pre><code>0621| : nfa address cell+ ; ( pwd -- nfa : move to name field address)
-0622| : cfa nfa dup c@ + cell+ down ; ( pwd -- cfa )
+<pre><code>0630| : nfa address cell+ ; ( pwd -- nfa : move to name field address)
+0631| : cfa nfa dup c@ + cell+ down ; ( pwd -- cfa )
 </code></pre>
 
 <p><em>.id</em> prints out a words name field.</p>
 
-<pre><code>0623| h: .id dup nfa print space ;          ( pwd -- pwd : print out a word )
+<pre><code>0632| h: .id dup nfa print space ;          ( pwd -- pwd : print out a word )
 </code></pre>
 
 <p><em>immediate?</em>, <em>compile-only?</em> and <em>inline?</em> are the tests words that
 all take a pointer to the <em>PWD</em> field.</p>
 
-<pre><code>0624| h: immediate? $4000 fallthrough;  ( pwd -- t : is word immediate? )
-0625| h: set? swap @ and 0&lt;&gt; ;          ( a u -- t : it any of 'u' set? )
-0626| h: compile-only? 0x8000 set? ;    ( pwd -- t : is word compile only? )
-0627| h: inline? inline-start inline-end within ; ( pwd -- t : is word inline? )
+<pre><code>0633| h: immediate? $4000 fallthrough;  ( pwd -- t : is word immediate? )
+0634| h: set? swap @ and 0&lt;&gt; ;          ( a u -- t : it any of 'u' set? )
+0635| h: compile-only? 0x8000 set? ;    ( pwd -- t : is word compile only? )
+0636| h: inline? inline-start inline-end within ; ( pwd -- t : is word inline? )
 </code></pre>
 
 <p>Now we know the structure of the dictionary we can define some words that
@@ -1989,31 +2016,31 @@ search order. It returns the same values as <em>searcher</em> if a word is found
 returns the original counted word string address if it was not found, as
 well as zeros.</p>
 
-<pre><code>0628| h: searcher ( a wid -- pwd pwd 1 | pwd pwd -1 | 0 a 0 : find a word in a WID )
-0629|   swap &gt;r dup
-0630|   begin
-0631|     dup
-0632|   while
-0633|     dup nfa count r@ count =string
-0634|     if ( found! )
-0635|       rdrop
-0636|       dup immediate? 1 or negate exit
-0637|     then
-0638|     nip dup @address
-0639|   repeat
-0640|   rdrop 2drop-0 ;
-0641| h: finder ( a -- pwd pwd 1 | pwd pwd -1 | 0 a 0 : find a word dictionary )
-0642|   &gt;r
-0643|   context
-0644|   begin
-0645|     dup@
-0646|   while
-0647|     dup@ @ r@ swap searcher ?dup
-0648|     if
-0649|       &gt;r rot-drop r&gt; rdrop exit
-0650|     then
-0651|     cell+
-0652|   repeat drop-0 r&gt; 0x0000 ;
+<pre><code>0637| h: searcher ( a wid -- pwd pwd 1 | pwd pwd -1 | 0 a 0 : find a word in a WID )
+0638|   swap &gt;r dup
+0639|   begin
+0640|     dup
+0641|   while
+0642|     dup nfa count r@ count compare 0=
+0643|     if ( found! )
+0644|       rdrop
+0645|       dup immediate? 1 or negate exit
+0646|     then
+0647|     nip dup @address
+0648|   repeat
+0649|   rdrop 2drop-0 ;
+0650| h: finder ( a -- pwd pwd 1 | pwd pwd -1 | 0 a 0 : find a word dictionary )
+0651|   &gt;r
+0652|   context
+0653|   begin
+0654|     dup@
+0655|   while
+0656|     dup@ @ r@ swap searcher ?dup
+0657|     if
+0658|       &gt;r rot-drop r&gt; rdrop exit
+0659|     then
+0660|     cell+
+0661|   repeat drop-0 r&gt; 0x0000 ;
 </code></pre>
 
 <p><em>search-wordlist</em> and <em>find</em> are simple applications of <em>searcher</em> and
@@ -2022,9 +2049,9 @@ the standard one, this version of <em>find</em> does not return an execution tok
 but a pointer in the word header which can be turned into an execution token
 with <em>cfa</em>.</p>
 
-<pre><code>0653| : search-wordlist searcher rot-drop ; ( a wid -- pwd 1 | pwd -1 | a 0 )
-0654| : find ( a -- pwd 1 | pwd -1 | a 0 : find a word in the dictionary )
-0655|   finder rot-drop ;
+<pre><code>0662| : search-wordlist searcher rot-drop ; ( a wid -- pwd 1 | pwd -1 | a 0 )
+0663| : find ( a -- pwd 1 | pwd -1 | a 0 : find a word in the dictionary )
+0664|   finder rot-drop ;
 </code></pre>
 
 <h2>Numeric Input</h2>
@@ -2037,13 +2064,13 @@ converted to the number it represents in the base and a boolean indicating
 whether or not the conversion was successful. An ASCII character set is
 assumed.</p>
 
-<pre><code>0656| : digit? ( c base -- u f )
-0657|   &gt;r [char] 0 - 9 over &lt;
-0658|   if 
-0659|     7 - 
-0660|     =bl invert and ( handle lower case, as well as upper case )
-0661|     dup $A &lt; or 
-0662|   then dup r&gt; u&lt; ;
+<pre><code>0665| h: digit? ( c base -- u f )
+0666|   &gt;r [char] 0 - 9 over &lt;
+0667|   if 
+0668|     7 - 
+0669|     =bl invert and ( handle lower case, as well as upper case )
+0670|     dup $A &lt; or 
+0671|   then dup r&gt; u&lt; ;
 </code></pre>
 
 <p><em>&gt;number</em> does the work of the numeric conversion, getting a character
@@ -2058,75 +2085,42 @@ characters, if any, as well as the converted number.</p>
 
 <p><em>&gt;number</em> operates on unsigned double cell values, not single cell values.</p>
 
-<pre><code>0663| : &gt;number ( ud b u -- ud b u : convert string to number )
-0664|   begin
-0665|     ( get next character )
-0666|     2dup 2&gt;r drop c@ base@ digit? 
-0667|     0= if                                 ( d char )
-0668|       drop                                ( d char -- d )
-0669|       2r&gt;                                 ( restore string )
-0670|       nop exit                            ( ..exit )
-0671|     then                                  ( d char )
-0672|     swap base@ um* drop rot base@ um* d+  ( accumulate digit )
-0673|     2r&gt;                                   ( restore string )
-0674|     +string dup0=                         ( advance string and test for end )
-0675|   until ;
-</code></pre>
-
-<p><em>negative?</em> and <em>base?</em> should be thought of as working in conjunction
-with <em>&gt;number</em> only. Numbers can have certain prefixes which change the
-interpretation of the number, for example a prefix of <em>-</em> means the number
-is negative, a <em>\$</em> prefix means the number is hexadecimal regardless of the
-current input base, and a <em>#</em> prefix (which is a less common prefix) means
-the number is decimal. <em>negative?</em> handles the negative case, and could
-potentially be used as standalone word, however using <em>base?</em> comes with
-caveats, it changes the current base if one of the base changing prefixes
-is encountered, <em>&gt;number</em> is careful to restore the base back to what it
-was when it uses <em>base?</em>.</p>
-
-<pre><code>h: ?exit if rdrop then ;
-
-h: negative? ( b u -- b u t : is &gt;number negative? )
-  [char] - ' nop fallthrough;
-h: base-match ( b u c xt -- b u t )
-   2&gt;r string@ r&gt; = if +string r&gt; execute [-1] exit then rdrop 0x0000 ;
-
-h: base? ( b u -- b u  ) 
-  [char] $ ' hex     base-match ?exit
-  [char] # ' decimal base-match drop ;
-
-
-0676| h: negative? ( b u -- b u t : is &gt;number negative? )
-0677|    string@ [char] - = if +string [-1] exit then 0x0000 ;
-0678| h: base? ( b u -- )
-0679|   string@ [char] $ = if +string hex     exit then ( $hex )  
-0680|   string@ [char] # = if +string decimal exit then ; ( #decimal )
+<pre><code>0672| : &gt;number ( ud b u -- ud b u : convert string to number )
+0673|   begin
+0674|     ( get next character )
+0675|     2dup 2&gt;r drop c@ base@ digit? 
+0676|     0= if                                 ( d char )
+0677|       drop                                ( d char -- d )
+0678|       2r&gt;                                 ( restore string )
+0679|       nop exit                            ( ..exit )
+0680|     then                                  ( d char )
+0681|     swap base@ um* drop rot base@ um* d+  ( accumulate digit )
+0682|     2r&gt;                                   ( restore string )
+0683|     +string dup0=                         ( advance string and test for end )
+0684|   until ;
 </code></pre>
 
 <p><em>&gt;number</em> is a generic word, but awkward to use,  <em>number?</em> does some
 processing of the results to <em>&gt;number</em> and handles other input processing
 expected for numbers. For example numbers can be prefixed by <em>\$</em> to specify
-they are in hex, or <em>#</em> for decimal, regardless of the current base. The
+they are in hex, regardless of the current base. The
 decimal point is handled for double cell input. The minus sign, <em>-</em>, can
-be used as a prefix for all of these different formats to specify that
-the number is negative. The negative prefix must come before any base
-specifier. <em>dpl</em> is used to store where the decimal place occurred in the
-input.</p>
+be used as a prefix for any base specifier to indicate the number is negative
+The negative prefix must come before any base specifier. <em>dpl</em> is used to 
+store where the decimal place occurred in the input.</p>
 
-<pre><code>0681| h: number? ( b u -- d f : is number? )
-0682|   [-1] dpl !
-0683|   radix     &gt;r
-0684|   negative? &gt;r
-0685|   base?
-0686|   0 -rot 0 -rot 
-0687|   &gt;number
-0688|   string@ [char] . = if +string
-0689|     dup&gt;r &gt;number nip if 0 rdrop else r&gt; dpl ! [-1] then 
-0690|   else 
-0691|     nip 0= 
-0692|   then
-0693|   r&gt; if &gt;r dnegate r&gt; then
-0694|   r&gt; base! ;
+<pre><code>0685| h: number? ( a u -- d -1 | a u 0 )
+0686|   [-1] dpl !
+0687|   base@ &gt;r
+0688|   string@ [char] - = dup&gt;r if     +string then
+0689|   string@ [char] $ =       if hex +string then
+0690|   2&gt;r 0 dup 2r&gt; 
+0691|   begin 
+0692|     &gt;number dup
+0693|   while string@ [char] . xor
+0694|     if rot-drop rot r&gt; 2drop-0 r&gt; base! exit then 
+0695|     1- dpl ! 1+ dpl @
+0696|   repeat 2drop r&gt; if dnegate then r&gt; base! [-1] ;
 </code></pre>
 
 <h2>Parsing</h2>
@@ -2137,38 +2131,38 @@ Technically Forth has no fixed grammar as any Forth word is free to parse
 the following input stream however it likes, but it is rare that to deviate
 from the norm and words which do complex processing are highly discouraged.</p>
 
-<pre><code>0695| h: -trailing ( b u -- b u : remove trailing spaces )
-0696|   for
-0697|     aft =bl over r@ + c@ &lt;
-0698|       if r&gt; 1+ exit then
-0699|     then
-0700|   next 0x0000 ;
-0701| h: lookfor ( b u c xt -- b u : skip until *xt* test succeeds )
-0702|   swap &gt;r -rot
-0703|   begin
-0704|     dup
-0705|   while
-0706|     string@ r@ - r@ =bl = 4 pick execute 
-0707|     if rdrop rot-drop exit then
-0708|     +string
-0709|   repeat rdrop rot-drop ;
-0710| h: no-match if 0&gt; exit then 0&lt;&gt; ; ( n f -- t )
-0711| h: match no-match invert ;        ( n f -- t )
-0712| h: parser ( b u c -- b u delta )
-0713|   &gt;r over r&gt; swap 2&gt;r
-0714|   r@ ' no-match lookfor 2dup
-0715|   r&gt; ' match    lookfor swap r&gt; - &gt;r - r&gt; 1+ ;
-0716| : parse ( c -- b u ; &lt;string&gt; )
-0717|    &gt;r tib in@ + #tib @ in@ - r@ parser &gt;in +!
-0718|    r&gt; =bl = if -trailing then 0 max ;
-0719| : ) ; immediate ( -- : do nothing )
-0720| :  ( [char] ) parse 2drop ; immediate \ ) ( parse until matching paren )
-0721| : .( [char] ) parse type ; ( print out text until matching parenthesis )
-0722| : \ #tib @ in! ; immediate ( comment until new line )
-0723| h: ?length dup word-length u&gt; if $13 -throw exit then ;
-0724| : word 1depth parse ?length here pack$ ; ( c -- a ; &lt;string&gt; )
-0725| : token =bl word ;                       ( -- a )
-0726| : char token count drop c@ ;             ( -- c; &lt;string&gt; )
+<pre><code>0697| h: -trailing ( b u -- b u : remove trailing spaces )
+0698|   for
+0699|     aft =bl over r@ + c@ &lt;
+0700|       if r&gt; 1+ exit then
+0701|     then
+0702|   next 0x0000 ;
+0703| h: lookfor ( b u c xt -- b u : skip until *xt* test succeeds )
+0704|   swap &gt;r -rot
+0705|   begin
+0706|     dup
+0707|   while
+0708|     string@ r@ - r@ =bl = 4 pick execute 
+0709|     if rdrop rot-drop exit then
+0710|     +string
+0711|   repeat rdrop rot-drop ;
+0712| h: no-match if 0&gt; exit then 0&lt;&gt; ; ( n f -- t )
+0713| h: match no-match invert ;        ( n f -- t )
+0714| h: parser ( b u c -- b u delta )
+0715|   &gt;r over r&gt; swap 2&gt;r
+0716|   r@ ' no-match lookfor 2dup
+0717|   r&gt; ' match    lookfor swap r&gt; - &gt;r - r&gt; 1+ ;
+0718| : parse ( c -- b u ; &lt;string&gt; )
+0719|    &gt;r tib in@ + #tib @ in@ - r@ parser &gt;in +!
+0720|    r&gt; =bl = if -trailing then 0 max ;
+0721| : ) ; immediate ( -- : do nothing )
+0722| :  ( [char] ) parse 2drop ; immediate \ ) ( parse until matching paren )
+0723| : .( [char] ) parse type ; ( print out text until matching parenthesis )
+0724| : \ #tib @ in! ; immediate ( comment until new line )
+0725| h: ?length dup word-length u&gt; if $13 -throw exit then ;
+0726| : word 1depth parse ?length here pack$ ; ( c -- a ; &lt;string&gt; )
+0727| : token =bl word ;                       ( -- a )
+0728| : char token count drop c@ ;             ( -- c; &lt;string&gt; )
 </code></pre>
 
 <h2>The Interpreter</h2>
@@ -2217,54 +2211,54 @@ works means that the word will not be found in the dictionary any more.
 matching <em>;</em> is met, however that is it's most common use in other Forths
 if it is defined. It hides the latest define word.</p>
 
-<pre><code>0727| h: ?dictionary dup $3F00 u&gt; if 8 -throw exit then ;
-0728| : , here dup cell+ ?dictionary cp! ! ; ( u -- : store *u* in dictionary )
-0729| : c, here ?dictionary c! cp 1+! ;      ( c -- : store *c* in the dictionary )
-0730| h: doLit 0x8000 or , ;                 ( n+ -- : compile literal )
-0731| : literal ( n -- : write a literal into the dictionary )
-0732|   dup 0x8000 and ( n &gt; $7FFF ? )
-0733|   if
-0734|     invert doLit =invert , exit ( store inversion of n the invert it )
-0735|   then
-0736|   doLit ; compile-only immediate ( turn into literal, write into dictionary )
-0737| h: make-callable chars $4000 or ; ( cfa -- instruction )
-0738| : compile, make-callable , ; ( cfa -- : compile a code field address )
-0739| h: $compile dup inline? if cfa @ , exit then cfa compile, ; ( pwd -- )
-0740| h: not-found source type $D -throw ; ( -- : throw 'word not found' )
-0741| h: ?compile dup compile-only? if source type $E -throw exit then ;
-0742| : (literal) state@ if postpone literal exit then ; ( u -- u | )
-0743| : interpret ( ??? a -- ??? : The command/compiler loop )
-0744|   \ dup count type space ( &lt;- for tracing the parser )
-0745|   find ?dup if
-0746|     state@
-0747|     if
-0748|       0&gt; if cfa execute exit then \ &lt;- immediate word are executed
-0749|       $compile exit               \ &lt;- compiling word are...compiled.
-0750|     then
-0751|     drop ?compile     \ &lt;- check it's not a compile only word word
-0752|     cfa execute exit  \ &lt;- if its not, execute it, then exit *interpreter*
-0753|   then
-0754|   \ not a word
-0755|   dup&gt;r count number? if rdrop \ it's a number!
-0756|     dpl @ 0&lt; if \ &lt;- dpl will -1 if its a single cell number
-0757|        drop     \ drop high cell from 'number?' for single cell output
-0758|     else        \ &lt;- dpl is not -1, it's a double cell number
-0759|        state@ if swap then 
-0760|        &lt;literal&gt; @execute \ &lt;literal&gt; is executed twice if it's a double
-0761|     then
-0762|     &lt;literal&gt; @execute exit
-0763|   then
-0764|   r&gt; not-found ; \ not a word or number, it's an error!
+<pre><code>0729| h: ?dictionary dup $3F00 u&gt; if 8 -throw exit then ;
+0730| : , here dup cell+ ?dictionary cp! ! ; ( u -- : store *u* in dictionary )
+0731| : c, here ?dictionary c! cp 1+! ;      ( c -- : store *c* in the dictionary )
+0732| h: doLit 0x8000 or , ;                 ( n+ -- : compile literal )
+0733| : literal ( n -- : write a literal into the dictionary )
+0734|   dup 0x8000 and ( n &gt; $7FFF ? )
+0735|   if
+0736|     invert doLit =invert , exit ( store inversion of n the invert it )
+0737|   then
+0738|   doLit ; compile-only immediate ( turn into literal, write into dictionary )
+0739| h: make-callable chars $4000 or ; ( cfa -- instruction )
+0740| : compile, make-callable , ; ( cfa -- : compile a code field address )
+0741| h: $compile dup inline? if cfa @ , exit then cfa compile, ; ( pwd -- )
+0742| h: not-found source type $D -throw ; ( -- : throw 'word not found' )
+0743| h: ?compile dup compile-only? if source type $E -throw exit then ;
+0744| : (literal) state@ if postpone literal exit then ; ( u -- u | )
+0745| : interpret ( ??? a -- ??? : The command/compiler loop )
+0746|   \ dup count type space ( &lt;- for tracing the parser )
+0747|   find ?dup if
+0748|     state@
+0749|     if
+0750|       0&gt; if cfa execute exit then \ &lt;- immediate word are executed
+0751|       $compile exit               \ &lt;- compiling word are...compiled.
+0752|     then
+0753|     drop ?compile     \ &lt;- check it's not a compile only word word
+0754|     cfa execute exit  \ &lt;- if its not, execute it, then exit *interpreter*
+0755|   then
+0756|   \ not a word
+0757|   dup&gt;r count number? if rdrop \ it's a number!
+0758|     dpl @ 0&lt; if \ &lt;- dpl will -1 if its a single cell number
+0759|        drop     \ drop high cell from 'number?' for single cell output
+0760|     else        \ &lt;- dpl is not -1, it's a double cell number
+0761|        state@ if swap then 
+0762|        &lt;literal&gt; @execute \ &lt;literal&gt; is executed twice if it's a double
+0763|     then
+0764|     &lt;literal&gt; @execute exit
+0765|   then
+0766|   r&gt; not-found ; \ not a word or number, it's an error!
 </code></pre>
 
 <p>NB. <em>compile</em> only works for words, instructions, and numbers below \$8000</p>
 
-<pre><code>0765| : compile  r&gt; dup@ , cell+ &gt;r ; compile-only ( --:Compile next compiled word )
-0766| : immediate $4000 last fallthrough; ( -- : previous word immediate )
-0767| h: toggle tuck @ xor swap! ;        ( u a -- : xor value at addr with u )
-0768| ( : compile-only 0x8000 last toggle ; )
-0769| ( : smudge last fallthrough; )
-0770| h: (smudge) nfa $80 swap toggle ; ( pwd -- )
+<pre><code>0767| : compile  r&gt; dup@ , cell+ &gt;r ; compile-only ( --:Compile next compiled word )
+0768| : immediate $4000 last fallthrough; ( -- : previous word immediate )
+0769| h: toggle tuck @ xor swap! ;        ( u a -- : xor value at addr with u )
+0770| ( : compile-only 0x8000 last toggle ; )
+0771| ( : smudge last fallthrough; )
+0772| h: (smudge) nfa $80 swap toggle ; ( pwd -- )
 </code></pre>
 
 <h2>Strings</h2>
@@ -2310,25 +2304,25 @@ the string literal will be compiled into a word definition, like code is, so
 the action will have also manipulate the return stack so the string literal
 is jumped over.</p>
 
-<pre><code>0771| h: count+ count + ;
-0772| h: do$ r&gt; r@ r&gt; count+ aligned &gt;r swap &gt;r ; ( -- a )
-0773| h: string-literal do$ nop ; ( -- a : do string NB. nop to fool optimizer )
-0774| h: .string do$ print ; ( -- : print string  )
+<pre><code>0773| h: count+ count + ;
+0774| h: do$ r&gt; r@ r&gt; count+ aligned &gt;r swap &gt;r ; ( -- a )
+0775| h: string-literal do$ nop ; ( -- a : do string NB. nop to fool optimizer )
+0776| h: .string do$ print ; ( -- : print string  )
 </code></pre>
 
 <p>To allow the meta-compilers version of <em>."</em> and <em>\$"</em> to work we will need
 to populate two variables in the metacompiler with the correct actions.</p>
 
-<pre><code>0775| [t] .string        tdoPrintString meta!
-0776| [t] string-literal tdoStringLit   meta!
-0777| h: parse-string [char] " word count+ cp! ; ( -- )
-0778| ( &lt;string&gt;, --, Run: -- b )
-0779| : $"  compile string-literal parse-string ; immediate compile-only
-0780| : ."  compile .string parse-string ; immediate compile-only ( &lt;string&gt;, -- )
-0781| : abort [-1] [-1] yield? ;                                     ( -- )
-0782| h: ?abort swap if print cr abort then drop ;                   ( u a -- )
-0783| h: (abort) do$ ?abort ;                                        ( -- )
-0784| : abort" compile (abort) parse-string ; immediate compile-only ( u -- )
+<pre><code>0777| [t] .string        tdoPrintString meta!
+0778| [t] string-literal tdoStringLit   meta!
+0779| ( &lt;string&gt;, --, Run: -- b )
+0780| : $" compile string-literal fallthrough; immediate compile-only
+0781| h: parse-string [char] " word count+ cp! ; ( ccc" -- )
+0782| : ." compile .string parse-string ; immediate compile-only ( &lt;string&gt;, -- )
+0783| : abort [-1] [-1] yield? ;                                     ( -- )
+0784| h: ?abort swap if print cr abort then drop ;                   ( u a -- )
+0785| h: (abort) do$ ?abort ;                                        ( -- )
+0786| : abort" compile (abort) parse-string ; immediate compile-only ( u -- )
 </code></pre>
 
 <h2>Evaluator</h2>
@@ -2362,28 +2356,27 @@ occur within <em>interpreter</em> or <em>eval</em> will be caught by <em>quit</e
 
 <p><em>quit</em> will be called from the boot word later on.</p>
 
-<pre><code>0785| h: preset tib-start #tib cell+ ! 0 in! id zero ;  ( -- : reset input )
-0786| : ] [-1] state ! ;                                ( -- : compile mode )
-0787| : [   state zero ; immediate                      ( -- : command mode )
-0788| h: ?error ( n -- : perform actions on error )
-0789|   ?dup if
-0790|     .             ( print error number )
-0791|     [char] ? emit ( print '?' )
-0792|     cr            ( and terminate the line )
-0793|     sp0 cells sp! ( empty the stack )
-0794|     preset        ( reset I/O streams )
-0795|     postpone [    ( back into interpret mode )
-0796|     exit
-0797|   then ;
-0798| h: (ok) command? if ."  ok  " cr exit then ;  ( -- )
-0799| ( : ok &lt;ok&gt; @execute ; )
-0800| h: ?depth sp@ sp0 u&lt; if 4 -throw exit then ;  ( u -- : depth check )
-0801| h: eval ( -- )
-0802|   begin
-0803|     token dup c@
-0804|   while
-0805|     interpret ?depth
-0806|   repeat drop &lt;ok&gt; @execute ;
+<pre><code>0787| h: preset tib-start #tib cell+ ! 0 in! id zero ;  ( -- : reset input )
+0788| : ] [-1] state ! ;                                ( -- : compile mode )
+0789| : [   state zero ; immediate                      ( -- : command mode )
+0790| h: ?error ( n -- : perform actions on error )
+0791|   ?dup if
+0792|     .             ( print error number )
+0793|     [char] ? emit ( print '?' )
+0794|     cr            ( and terminate the line )
+0795|     sp0 cells sp! ( empty the stack )
+0796|     preset        ( reset I/O streams )
+0797|     postpone [    ( back into interpret mode )
+0798|     exit
+0799|   then ;
+0800| h: (ok) command? if ."  ok  " cr exit then ;  ( -- )
+0801| ( : ok &lt;ok&gt; @execute ; )
+0802| h: eval ( -- )
+0803|   begin
+0804|     token dup c@
+0805|   while
+0806|     interpret 0 ?depth
+0807|   repeat drop &lt;ok&gt; @execute ;
 </code></pre>
 
 <p><em>quit</em> can now be defined, it sets up the input line variables, sets the
@@ -2391,8 +2384,8 @@ interpreter into command mode, enters an infinite loop it does not exit
 from, and within that loop it reads in a line of input, evaluates it and
 processes any errors that occur, if any.</p>
 
-<pre><code>0807| ( : @echo source type cr ; ( -- : can be used to monitor input )
-0808| : quit preset [ begin query ( @echo ) ' eval catch ?error again ; ( -- )
+<pre><code>0808| ( : @echo source type cr ; ( -- : can be used to monitor input )
+0809| : quit preset postpone [ begin query ( @echo ) ' eval catch ?error again ;
 </code></pre>
 
 <p><em>evaluate</em> is used to evaluate a string of text as if it were typed in by
@@ -2405,14 +2398,14 @@ restoring to what it was before the evaluation took place. It is careful
 to catch errors and always perform the restore, any errors that thrown are
 re-thrown after the input is restored.</p>
 
-<pre><code>0809| h: get-input source in@ source-id &lt;ok&gt; @ ;    ( -- n1...n5 )
-0810| h: set-input &lt;ok&gt; ! id ! in! #tib 2! ;   ( n1...n5 -- )
-0811| : evaluate ( a u -- )
-0812|   get-input 2&gt;r 2&gt;r &gt;r
-0813|   0 [-1] 0 set-input
-0814|   ' eval catch
-0815|   r&gt; 2r&gt; 2r&gt; set-input
-0816|   throw ;
+<pre><code>0810| h: get-input source in@ source-id &lt;ok&gt; @ ; ( -- n1...n5 )
+0811| h: set-input &lt;ok&gt; ! id ! in! #tib 2! ;     ( n1...n5 -- )
+0812| : evaluate ( a u -- )
+0813|   get-input 2&gt;r 2&gt;r &gt;r
+0814|   0 [-1] 0 set-input
+0815|   ' eval catch
+0816|   r&gt; 2r&gt; 2r&gt; set-input
+0817|   throw ;
 </code></pre>
 
 <h2>I/O Control</h2>
@@ -2426,12 +2419,12 @@ which communications with the Forth took place over a UART.</p>
 <p>Open and reading from different files is also not needed, it is handled
 by the virtual machine.</p>
 
-<pre><code>0817| h: io! preset fallthrough;  ( -- : initialize I/O )
-0818| h: console ' rx? &lt;key&gt; ! ' tx! &lt;emit&gt; ! fallthrough;
-0819| h: hand ' (ok)  ( ' drop &lt;-- was emit )  ( ' ktap ) fallthrough;
-0820| h: xio  ' accept &lt;expect&gt; ! ( &lt;tap&gt; ! ) ( &lt;echo&gt; ! ) &lt;ok&gt; ! ;
-0821| ( h: pace 11 emit ; )
-0822| ( : file ' pace ' drop ' ktap xio ; )
+<pre><code>0818| h: io! preset fallthrough;  ( -- : initialize I/O )
+0819| h: console ' rx? &lt;key&gt; ! ' tx! &lt;emit&gt; ! fallthrough;
+0820| h: hand ' (ok)  ( ' drop &lt;-- was emit )  ( ' ktap ) fallthrough;
+0821| h: xio  ' accept &lt;expect&gt; ! ( &lt;tap&gt; ! ) ( &lt;echo&gt; ! ) &lt;ok&gt; ! ;
+0822| ( h: pace 11 emit ; )
+0823| ( : file ' pace ' drop ' ktap xio ; )
 </code></pre>
 
 <h2>Control Structures and Defining words</h2>
@@ -2507,55 +2500,55 @@ to make new data structures. However the default behavior is quite simple,
 it would be more useful if we could change it, or extend it. This is what
 <em>does&gt;</em> allows us to do. </p>
 
-<pre><code>0823| h: ?check ( magic-number -- : check for magic number on the stack )
-0824|    magic &lt;&gt; if $16 -throw exit then ;
-0825| h: ?unique ( a -- a : print a message if a word definition is not unique )
-0826|   dup last @ searcher
-0827|   if
-0828|     ( source type )
-0829|     space
-0830|     2drop last-def @ nfa print  ."  redefined " cr exit
-0831|   then ;
-0832| h: ?nul ( b -- : check for zero length strings )
-0833|    count 0= if $A -throw exit then 1- ;
-0834| h: find-token token find fallthrough; ( -- pwd,  &lt;string&gt; )
-0835| h: ?not-found 0= if not-found exit then ; ( t -- )
-0836| h: find-cfa find-token cfa ;                         ( -- xt, &lt;string&gt; )
-0837| : ' find-cfa state@ if postpone literal exit then ; immediate
-0838| : [compile] find-cfa compile, ; immediate compile-only  ( --, &lt;string&gt; )
-0839| : [char] char postpone literal ; immediate compile-only ( --, &lt;string&gt; )
-0840| ( h: ?quit command? if $38 -throw exit then ; )
-0841| : ; ( ?quit ) ?check =exit , postpone [ fallthrough; immediate compile-only
-0842| h: get-current! ?dup if get-current ! exit then ; ( -- wid )
-0843| : : align here dup last-def ! ( "name", -- colon-sys )
-0844|     last , token ?nul ?unique count+ cp! magic ] ;
-0845| : begin here  ; immediate compile-only      ( -- a )
-0846| : until chars $2000 or , ; immediate compile-only  ( a -- )
-0847| : again chars , ; immediate compile-only ( a -- )
-0848| h: here-0 here 0x0000 ;
-0849| h: &gt;mark here-0 postpone again ;
-0850| : if here-0 postpone until ; immediate compile-only
-0851| ( : unless ' 0= compile, postpone if ; immediate compile-only )
-0852| : then fallthrough; immediate compile-only
-0853| h: &gt;resolve here chars over @ or swap! ;
-0854| : else &gt;mark swap &gt;resolve ; immediate compile-only
-0855| : while postpone if ; immediate compile-only
-0856| : repeat swap postpone again postpone then ; immediate compile-only
-0857| h: last-cfa last-def @ cfa ;  ( -- u )
-0858| : recurse last-cfa compile, ; immediate compile-only
-0859| ( : tail last-cfa postpone again ; immediate compile-only )
-0860| : create postpone : drop compile doVar get-current ! postpone [ ;
-0861| : &gt;body cell+ ; ( a -- a )
-0862| h: doDoes r&gt; chars here chars last-cfa dup cell+ doLit ! , ;
-0863| : does&gt; compile doDoes nop ; immediate compile-only
-0864| : variable create 0 , ;
-0865| : constant create ' doConst make-callable here cell- ! , ;
-0866| : :noname here-0 magic ] ;
-0867| : for =&gt;r , here ; immediate compile-only
-0868| : next compile doNext , ; immediate compile-only
-0869| : aft drop &gt;mark postpone begin swap ; immediate compile-only
-0870| : hide find-token (smudge) ; ( --, &lt;string&gt; : hide word by name )
-0871| ( : name? find-token nfa ; )
+<pre><code>0824| h: ?check ( magic-number -- : check for magic number on the stack )
+0825|    magic = ?exit $16 -throw ;
+0826| h: ?unique ( a -- a : print a message if a word definition is not unique )
+0827|   dup get-current searcher 
+0828|   if
+0829|     ( source type )
+0830|     space
+0831|     2drop last-def @ nfa print  ."  redefined " cr exit
+0832|   then ;
+0833| h: ?nul ( b -- : check for zero length strings )
+0834|    dup c@ 0&lt;&gt; ?exit $A -throw ;
+0835| h: find-token token find fallthrough; ( -- pwd,  &lt;string&gt; )
+0836| h: ?not-found 0&lt;&gt; ?exit not-found ; ( t -- )
+0837| h: find-cfa find-token cfa ;                         ( -- xt, &lt;string&gt; )
+0838| : ' find-cfa state@ if postpone literal exit then ; immediate
+0839| : [compile] find-cfa compile, ; immediate compile-only  ( --, &lt;string&gt; )
+0840| : [char] char postpone literal ; immediate compile-only ( --, &lt;string&gt; )
+0841| ( h: ?quit command? if $38 -throw exit then ; )
+0842| : ; ( ?quit ) ?check =exit , postpone [ fallthrough; immediate compile-only
+0843| h: get-current! ?dup if get-current ! exit then ; ( -- wid )
+0844| : : align here dup last-def ! ( "name", -- colon-sys )
+0845|   last , token ?nul ?unique count+ cp! magic postpone ] ; ( NB. need postpone!)
+0846| : begin here  ; immediate compile-only      ( -- a )
+0847| : until chars $2000 or , ; immediate compile-only  ( a -- )
+0848| : again chars , ; immediate compile-only ( a -- )
+0849| h: here-0 here 0x0000 ;
+0850| h: &gt;mark here-0 postpone again ;
+0851| : if here-0 postpone until ; immediate compile-only
+0852| ( : unless ' 0= compile, postpone if ; immediate compile-only )
+0853| : then fallthrough; immediate compile-only
+0854| h: &gt;resolve here chars over @ or swap! ;
+0855| : else &gt;mark swap &gt;resolve ; immediate compile-only
+0856| : while postpone if ; immediate compile-only
+0857| : repeat swap postpone again postpone then ; immediate compile-only
+0858| h: last-cfa last-def @ cfa ;  ( -- u )
+0859| : recurse last-cfa compile, ; immediate compile-only
+0860| ( : tail last-cfa postpone again ; immediate compile-only )
+0861| : create postpone : drop compile doVar get-current ! postpone [ ;
+0862| : &gt;body cell+ ; ( a -- a )
+0863| h: doDoes r&gt; chars here chars last-cfa dup cell+ doLit ! , ;
+0864| : does&gt; compile doDoes nop ; immediate compile-only
+0865| : variable create 0 , ;
+0866| : constant create ' doConst make-callable here cell- ! , ;
+0867| : :noname here-0 magic postpone ] ; ( NB. need postpone! )
+0868| : for =&gt;r , here ; immediate compile-only
+0869| : next compile doNext , ; immediate compile-only
+0870| : aft drop &gt;mark postpone begin swap ; immediate compile-only
+0871| : hide find-token (smudge) ; ( --, &lt;string&gt; : hide word by name )
+0872| ( : name? find-token nfa ; )
 </code></pre>
 
 <h3>DOER/MAKE</h3>
@@ -2628,9 +2621,9 @@ register, Variable and Return Stack Pointers. This does not give a full
 view of what is going on, but it helps. If more information is needed it
 is always possible to edit the VM's C source and recompile it.</p>
 
-<pre><code>0872| h: trace-execute vm-options ! &gt;r ; ( u xt -- )
-0873| : trace ( "name" -- : trace a word )
-0874|   find-cfa vm-options @ dup&gt;r 3 or trace-execute r&gt; vm-options ! ;
+<pre><code>0873| h: trace-execute vm-options ! &gt;r ; ( u xt -- )
+0874| : trace ( "name" -- : trace a word )
+0875|   find-cfa vm-options @ dup&gt;r 3 or trace-execute r&gt; vm-options ! ;
 </code></pre>
 
 <p>Annotated example output of running <em>trace</em> on <em>+</em> is shown:</p>
@@ -2651,27 +2644,27 @@ is always possible to edit the VM's C source and recompile it.</p>
 metacompiler has been. The vocabulary word set is how Forth organizes words
 and controls visibility of words.</p>
 
-<pre><code>0875| h: find-empty-cell 0 fallthrough; ( a -- )
-0876| h: find-cell &gt;r begin dup@ r@ &lt;&gt; while cell+ repeat rdrop ; ( u a -- a )
+<pre><code>0876| h: find-empty-cell 0 fallthrough; ( a -- )
+0877| h: find-cell &gt;r begin dup@ r@ &lt;&gt; while cell+ repeat rdrop ; ( u a -- a )
 </code></pre>
 
 <p><em>get-order</em> retrieves the current search order by pushing a list of
 <em>wid</em> values onto the stack <em>n</em> long which can be modified before being
 passed to <em>set-order</em>.</p>
 
-<pre><code>0877| : get-order ( -- widn ... wid1 n : get the current search order )
-0878|   context
-0879|   find-empty-cell
-0880|   dup cell- swap
-0881|   context - chars dup&gt;r 1- s&gt;d if $32 -throw exit then
-0882|   for aft dup@ swap cell- then next @ r&gt; ;
+<pre><code>0878| : get-order ( -- widn ... wid1 n : get the current search order )
+0879|   context
+0880|   find-empty-cell
+0881|   dup cell- swap
+0882|   context - chars dup&gt;r 1- s&gt;d if $32 -throw exit then
+0883|   for aft dup@ swap cell- then next @ r&gt; ;
 </code></pre>
 
 <p><em>xchange</em> is used to place the next few words into the root vocabulary,
 it will be set back to the default shortly.</p>
 
-<pre><code>0883| xchange _forth-wordlist root-voc
-0884| : forth-wordlist _forth-wordlist ;
+<pre><code>0884| xchange _forth-wordlist root-voc
+0885| : forth-wordlist _forth-wordlist ;
 </code></pre>
 
 <p><em>set-order</em> does the opposite of <em>get-order</em>, it can be used to set
@@ -2695,17 +2688,17 @@ exception is thrown otherwise.</p>
 word list which new definitions are added to, <em>definitions</em> and <em>set-current</em>
 can be used to do this.</p>
 
-<pre><code>0885| ( @warning recursion without using recurse is used )
-0886| : set-order ( widn ... wid1 n -- : set the current search order )
-0887|   dup [-1] = if drop root-voc 1 set-order exit then 
-0888|   dup #vocs &gt; if $31 -throw exit then
-0889|   context swap for aft tuck ! cell+ then next zero ;
+<pre><code>0886| ( @warning recursion without using recurse is used )
+0887| : set-order ( widn ... wid1 n -- : set the current search order )
+0888|   dup [-1] = if drop root-voc 1 set-order exit then 
+0889|   dup #vocs &gt; if $31 -throw exit then
+0890|   context swap for aft tuck ! cell+ then next zero ;
 </code></pre>
 
 <p><em>forth</em> loads the root vocabulary containing the minimal word set,
 and also loads the normal <em>forth</em> vocabulary.</p>
 
-<pre><code>0890| : forth root-voc forth-wordlist 2 set-order ; ( -- )
+<pre><code>0891| : forth root-voc forth-wordlist 2 set-order ; ( -- )
 </code></pre>
 
 <p><em>words</em> is used to display all of the words defined in the dictionary in
@@ -2715,18 +2708,18 @@ is to be shown or now, a bit is set in the words name fields counted
 string byte, in the highest bit of the count byte, if the word is to be
 hidden or shown.</p>
 
-<pre><code>0891| h: not-hidden? nfa c@ $80 and 0= ; ( pwd -- )
-0892| h: .words
-0893|     begin
-0894|       ?dup
-0895|     while dup not-hidden? if .id then @address repeat cr ;
-0896| : words
-0897|   get-order begin ?dup while swap dup cr u. colon-space @ .words 1- repeat ;
+<pre><code>0892| h: not-hidden? nfa c@ $80 and 0= ; ( pwd -- )
+0893| h: .words
+0894|     begin
+0895|       ?dup
+0896|     while dup not-hidden? if .id then @address repeat cr ;
+0897| : words
+0898|   get-order begin ?dup while swap dup cr u. colon-space @ .words 1- repeat ;
 </code></pre>
 
 <p><em>xchange</em> is used to place words back into the forth word list again.</p>
 
-<pre><code>0898| xchange root-voc _forth-wordlist
+<pre><code>0899| xchange root-voc _forth-wordlist
 </code></pre>
 
 <p>The <em>previous</em>/<em>also</em>/<em>only</em> mechanism for Forth word list manipulation
@@ -2768,33 +2761,33 @@ to an anonymous wordlist, <em>z</em> uses words <em>x</em> and <em>y</em> from t
 and then the words in the anonymous word lists are hidden, but not the
 newly defined word <em>z</em>, that is available in the default Forth word list.</p>
 
-<pre><code>0899| ( : previous get-order swap drop 1- set-order ; ( -- )
-0900| ( : also get-order over swap 1+ set-order ;     ( wid -- )
-0901| : only [-1] set-order ;                         ( -- )
-0902| ( : order get-order for aft . then next cr ;    ( -- )
-0903| ( : anonymous get-order 1+ here 1 cells allot swap set-order ; ( -- )
-0904| : definitions context @ set-current ;           ( -- )
-0905| h: (order)                                      ( w wid*n n -- wid*n w n )
-0906|   dup if
-0907|     1- swap &gt;r (order) over r@ xor
-0908|     if
-0909|       1+ r&gt; -rot exit
-0910|     then rdrop
-0911|   then ;
-0912| : -order get-order (order) nip set-order ;             ( wid -- )
-0913| : +order dup&gt;r -order get-order r&gt; swap 1+ set-order ; ( wid -- )
+<pre><code>0900| ( : previous get-order swap drop 1- set-order ; ( -- )
+0901| ( : also get-order over swap 1+ set-order ;     ( wid -- )
+0902| : only [-1] set-order ;                         ( -- )
+0903| ( : order get-order for aft . then next cr ;    ( -- )
+0904| ( : anonymous get-order 1+ here 1 cells allot swap set-order ; ( -- )
+0905| : definitions context @ set-current ;           ( -- )
+0906| h: (order)                                      ( w wid*n n -- wid*n w n )
+0907|   dup if
+0908|     1- swap &gt;r (order) over r@ xor
+0909|     if
+0910|       1+ r&gt; -rot exit
+0911|     then rdrop
+0912|   then ;
+0913| : -order get-order (order) nip set-order ;             ( wid -- )
+0914| : +order dup&gt;r -order get-order r&gt; swap 1+ set-order ; ( wid -- )
 </code></pre>
 
 <p><em>editor</em> is a word which loads the editor vocabulary, which will be
 defined later, it requires <em>+order</em> to work.</p>
 
-<pre><code>0914| : editor editor-voc +order ;                   ( -- )
-0915| ( : assembler root-voc assembler-voc 2 set-order ;     ( -- )
-0916| ( : ;code assembler ; immediate                        ( -- )
-0917| ( : code postpone : assembler ;                        ( -- )
-0918| ( xchange _forth-wordlist assembler-voc )
-0919| ( : end-code forth postpone ; ; immediate ( -- )
-0920| ( xchange assembler-voc _forth-wordlist )
+<pre><code>0915| : editor editor-voc +order ;                   ( -- )
+0916| ( : assembler root-voc assembler-voc 2 set-order ;     ( -- )
+0917| ( : ;code assembler ; immediate                        ( -- )
+0918| ( : code postpone : assembler ;                        ( -- )
+0919| ( xchange _forth-wordlist assembler-voc )
+0920| ( : end-code forth postpone ; ; immediate ( -- )
+0921| ( xchange assembler-voc _forth-wordlist )
 </code></pre>
 
 <h2>Block Word Set</h2>
@@ -2812,7 +2805,7 @@ perfect for embedded devices as well as upon the microcomputers it
 originated on.</p>
 
 <p>A 'Forth block' is 1024 byte long buffer which is backed by a mass
-storage device, which we will refer to as <em>disk</em>. Very compact programs
+storage device, which we will refer to as 'disk'. Very compact programs
 can be written that have their data stored persistently. Source can
 and data can be stored in blocks and evaluated, which will be described
 more in the 'Block editor' section of this document.</p>
@@ -2854,19 +2847,20 @@ marks the entire image as needing to be saved back to disk, whilst
 <em>flush</em> calls <em>(save)</em>. <em>block</em> then only has to check the block number
 is within range, and return a pointer to the block number multiplied by
 the size of a block - so this means that this version of <em>block</em> is just
-an index into main memory. This is similar to how <em>colorForth</em> implements
+an index into main memory. This is similar to how <a href="https://en.wikipedia.org/wiki/ColorForth">colorForth</a> implements
 its block word.</p>
 
-<pre><code>0921| : update [-1] block-dirty ! ; ( -- )
-0922| h: blk-@ blk @ ;              ( -- k : retrieve current loaded block )
-0923| h: +block blk-@ + ;           ( -- )
-0924| : save 0 here (save) throw ;  ( -- : save blocks )
-0925| : flush block-dirty @ if 0 [-1] (save) throw exit then ; ( -- )
-0926| : block ( k -- a )
-0927|   1depth
-0928|   dup $3F u&gt; if $23 -throw exit then
-0929|   dup blk !
-0930|   $A lshift ( &lt;-- b/buf * ) ;
+<pre><code>0922| : update [-1] block-dirty ! ; ( -- )
+0923| h: blk-@ blk @ ;              ( -- k : retrieve current loaded block )
+0924| h: +block blk-@ + ;           ( -- )
+0925| : save 0 here (save) throw ;  ( -- : save blocks )
+0926| : flush block-dirty @ 0= ?exit 0 [-1] (save) throw ; ( -- )
+0927| : block ( k -- a )
+0928|   1depth
+0929|   dup $3F u&gt; if $23 -throw exit then
+0930|   dup blk !
+0931|   $A lshift ( &lt;-- b/buf * ) ;
+0932| ( : dblock if $23 -throw exit then block ; ( ud -- )
 </code></pre>
 
 <p>The block word set has the following additional words, which augment the
@@ -2927,35 +2921,34 @@ in the appendix), which was then printed out. The full list of the
 standardized error messages can be stored in four blocks, and form a neat
 and easy to use database.</p>
 
-<pre><code>0931| h: c/l* ( c/l * ) 6 lshift ;            ( u -- u )
-0932| h: c/l/ ( c/l / ) 6 rshift ;            ( u -- u )
-0933| h: line c/l* swap block + c/l ;         ( k u -- a u )
-0934| h: loadline line evaluate ;             ( k u -- )
-0935| : load 0 l/b-1 for 2dup 2&gt;r loadline 2r&gt; 1+ next 2drop ; ( k -- )
-0936| h: pipe [char] | emit ;                      ( -- )
-0937| ( h: .line line -trailing $type ;       ( k u -- )
-0938| h: .border 3 spaces c/l [char] - nchars cr ; ( -- )
-0939| h: #line dup 2 u.r ;                    ( u -- u : print line number )
-0940| ( : thru over- for dup load 1+ next drop ; ( k1 k2 -- )
-0941| h: blank =bl fill ;                     ( b u -- )
-0942| ( : message l/b extract .line cr ;      ( u -- )
-0943| h: retrieve block drop ;                ( k -- )
-0944| : list                                  ( k -- )
-0945|   dup retrieve
-0946|   cr
-0947|   .border
-0948|   0 begin
-0949|     dup l/b &lt;
-0950|   while
-0951|     2dup #line pipe line $type pipe cr 1+
-0952|   repeat .border 2drop ;
+<pre><code>0933| h: c/l* ( c/l * ) 6 lshift ;            ( u -- u )
+0934| h: c/l/ ( c/l / ) 6 rshift ;            ( u -- u )
+0935| h: line c/l* swap block + c/l ;         ( k u -- a u )
+0936| h: loadline line evaluate ;             ( k u -- )
+0937| : load 0 l/b-1 for 2dup 2&gt;r loadline 2r&gt; 1+ next 2drop ; ( k -- )
+0938| h: pipe [char] | emit ;                      ( -- )
+0939| ( h: .line line -trailing $type ;       ( k u -- )
+0940| h: .border 3 spaces c/l [char] - nchars cr ; ( -- )
+0941| h: #line dup 2 u.r ;                    ( u -- u : print line number )
+0942| ( : thru over- for dup load 1+ next drop ; ( k1 k2 -- )
+0943| ( : message l/b extract .line cr ;      ( u -- )
+0944| h: retrieve block drop ;                ( k -- )
+0945| : list                                  ( k -- )
+0946|   dup retrieve
+0947|   cr
+0948|   .border
+0949|   0 begin
+0950|     dup l/b &lt;
+0951|   while
+0952|     2dup #line pipe line $type pipe cr 1+
+0953|   repeat .border 2drop ;
+0954| ( : index ( k1 k2 -- : show titles for block k1 to k2 )
+0955| (  over- cr )
+0956| (  for      )
+0957| (    dup 5u.r space pipe space dup 0 .line cr 1+ )
+0958| (  next drop ; )
+0959| ( : --&gt; blk-@ 1+ load ; immediate )
 </code></pre>
-
-<p>t: index ( k1 k2 -- : show titles for block k1 to k2 )
- over- cr
- for
-   dup 5u.r space pipe space dup 0 .line cr 1+
- next drop ;</p>
 
 <h2>Booting</h2>
 
@@ -3025,20 +3018,20 @@ because all the user has to do is 'turn the key' and the program is ready
 to go) by setting the boot variable to the desired word and saving the
 image with <em>save</em>.</p>
 
-<pre><code>0953| h: check-header? header-options @ first-bit 0= ; ( -- t )
-0954| h: disable-check 1 header-options toggle ;       ( -- )
+<pre><code>0960| h: check-header? header-options @ first-bit 0= ; ( -- t )
+0961| h: disable-check 1 header-options toggle ;       ( -- )
 </code></pre>
 
 <p><em>bist</em> checks the length field in the header matches <em>here</em> and that the
 CRC in the header matches the CRC it calculates in the image, it has to
 zero the CRC field out first.</p>
 
-<pre><code>0955| h: bist ( -- u : built in self test )
-0956|   check-header? if 0x0000 exit then       ( is checking disabled? Success? )
-0957|   header-length @ here xor if 2 exit then ( length check )
-0958|   header-crc @ header-crc zero            ( retrieve and zero CRC )
-0959|   0 here crc xor if 3 exit then           ( check CRC )
-0960|   disable-check 0x0000 ;                  ( disable check, success )
+<pre><code>0962| h: bist ( -- u : built in self test )
+0963|   check-header? if 0x0000 exit then       ( is checking disabled? Success? )
+0964|   header-length @ here xor if 2 exit then ( length check )
+0965|   header-crc @ header-crc zero            ( retrieve and zero CRC )
+0966|   0 here crc xor if 3 exit then           ( check CRC )
+0967|   disable-check 0x0000 ;                  ( disable check, success )
 </code></pre>
 
 <p><em>cold</em> performs the self check, and exits if it fails. It then
@@ -3046,17 +3039,18 @@ goes on to zero memory, set the initial value of <em>blk</em>, set the I/O
 vectors to sensible values, set the vocabularies to the default search
 order and reset the variable stack.</p>
 
-<pre><code>0961| h: cold ( -- : performs a cold boot  )
-0962|    bist ?dup if negate dup yield? exit then
+<pre><code>0968| h: cold ( -- : performs a cold boot  )
+0969|    bist ?dup if negate dup yield? exit then
 </code></pre>
 
-<p>\$10 retrieve x </p>
+<p>\$10 retrieve z </p>
 
-<pre><code>0963|    $10 block b/buf 0 fill
-0964|    $12 retrieve io!
-0965|    forth sp0 cells sp!
-0966|    ( rp0 cells rp! )
-0967|    &lt;boot&gt; @execute bye ;
+<pre><code>0970|    $10 block b/buf 0 fill
+0971|    $12 retrieve io!
+0972|    forth 
+0973|    sp0 cells sp!
+0974|    ( rp0 cells rp! )
+0975|    &lt;boot&gt; @execute bye ;
 </code></pre>
 
 <p><em>hi</em> prints out the welcome message, the version number, sets the numeric
@@ -3064,8 +3058,22 @@ base to decimal, and prints out the amount of memory used and free.</p>
 
 <p><em>normal-running</em> is the boot word, that is <em>&lt;boot&gt;</em> is set to.</p>
 
-<pre><code>0968| h: hi hex cr ." eFORTH v" ver 0 u.r cr decimal here . .free cr ;       ( -- )
-0969| h: normal-running hi quit ;                                ( -- : boot word )
+<pre><code>0976| ( h: author   $" Richard James Howe" ; )
+0977| ( h: project  $" eForth Interpreter and Metacompiler" ; )
+0978| ( h: site     $" https://github.com/howerj/embed" ; )
+0979| ( h: license  $" MIT https://opensource.org/licenses/MIT" ; )
+0980| ( : welcome  )
+0981| (    ." PROJECT: " project print cr )
+0982| (    ." AUTHOR:  " author  print cr )
+0983| (    ." SITE:    " site    print cr )
+0984| (    ." LICENSE: " license print cr ; )
+
+
+
+
+
+0985| h: hi hex cr ." eFORTH v" ver 0 u.r cr decimal here . .free cr ;       ( -- )
+0986| h: normal-running hi quit ;                                ( -- : boot word )
 </code></pre>
 
 <h2>See : The Forth Disassembler</h2>
@@ -3109,42 +3117,42 @@ word that we are looking for. It uses <em>validate</em> to attempt to check this
 if we have found a candidate word address by calling the word <em>cfa</em> on it,
 it should move to the same address we provided.</p>
 
-<pre><code>0970| h: validate over cfa &lt;&gt; if drop-0 exit then nfa ; ( pwd cfa -- nfa | 0 )
-0971| h: search-for-cfa ( wid cfa -- nfa : search for CFA in a word list )
-0972|   address cells &gt;r
-0973|   begin
-0974|     dup
-0975|   while
-0976|     address dup @address over r@ -rot within
-0977|     if dup @address r@ validate ?dup if rdrop nip exit then then
-0978|     address @
-0979|   repeat rdrop ;
-0980| h: name ( cwf -- a | 0 )
-0981|    &gt;r
-0982|    get-order
-0983|    begin
-0984|      dup
-0985|    while
-0986|      swap r@ search-for-cfa ?dup if &gt;r 1- ndrop r&gt; rdrop exit then
-0987|    1- repeat rdrop ;
-0988| h: .name name ?dup 0= if $" ?" then print ;
-0989| h: ?instruction ( i m e -- i 0 | e -1 )
-0990|   &gt;r over-and r&gt; tuck = if nip [-1] exit then drop-0 ;
-0991| h: .instruction ( u -- u )
-0992|    0x8000  0x8000 ?instruction if [char] L emit exit then
-0993|    $6000   $6000  ?instruction if [char] A emit exit then
-0994|    $6000   $4000  ?instruction if [char] C emit exit then
-0995|    $6000   $2000  ?instruction if [char] Z emit exit then
-0996|    drop-0 [char] B emit ;
-0997| h: decompile ( u -- : decompile instruction )
-0998|    dup .instruction $BFFF and if drop exit then space .name ;
-0999| h: decompiler ( previous current -- : decompile starting at address )
-1000|   &gt;r
-1001|   begin dup r@ u&lt; while
-1002|     dup 5u.r colon-space
-1003|     dup@
-1004|     dup 5u.r space decompile cr cell+
-1005|   repeat rdrop drop ;
+<pre><code>0987| h: validate over cfa &lt;&gt; if drop-0 exit then nfa ; ( pwd cfa -- nfa | 0 )
+0988| h: search-for-cfa ( wid cfa -- nfa : search for CFA in a word list )
+0989|   address cells &gt;r
+0990|   begin
+0991|     dup
+0992|   while
+0993|     address dup @address over r@ -rot within
+0994|     if dup @address r@ validate ?dup if rdrop nip exit then then
+0995|     address @
+0996|   repeat rdrop ;
+0997| h: name ( cwf -- a | 0 )
+0998|    &gt;r
+0999|    get-order
+1000|    begin
+1001|      dup
+1002|    while
+1003|      swap r@ search-for-cfa ?dup if &gt;r 1- ndrop r&gt; rdrop exit then
+1004|    1- repeat rdrop ;
+1005| h: .name name ?dup 0= if $" ?" then print ;
+1006| h: ?instruction ( i m e -- i 0 | e -1 )
+1007|   &gt;r over-and r&gt; tuck = if nip [-1] exit then drop-0 ;
+1008| h: .instruction ( u -- u )
+1009|    0x8000  0x8000 ?instruction if [char] L emit exit then
+1010|    $6000   $6000  ?instruction if [char] A emit exit then
+1011|    $6000   $4000  ?instruction if [char] C emit exit then
+1012|    $6000   $2000  ?instruction if [char] Z emit exit then
+1013|    drop-0 [char] B emit ;
+1014| h: decompile ( u -- : decompile instruction )
+1015|    dup .instruction $BFFF and if drop exit then space .name ;
+1016| h: decompiler ( previous current -- : decompile starting at address )
+1017|   &gt;r
+1018|   begin dup r@ u&lt; while
+1019|     dup 5u.r colon-space
+1020|     dup@
+1021|     dup 5u.r space decompile cr cell+
+1022|   repeat rdrop drop ;
 
 
 : disassembler ( a u -- : disassemble a range of code )
@@ -3171,14 +3179,14 @@ metacompiler to the target image, the same assembler words like <em>d-1</em> and
 <em>#t|n</em> could then be used to disassemble ALU instructions, which are
 currently only displayed in their raw format.</p>
 
-<pre><code>1006| : see ( --, &lt;string&gt; : decompile a word )
-1007|   token finder ?not-found
-1008|   swap      2dup= if drop here then &gt;r
-1009|   cr colon-space .id dup cr
-1010|   cfa r&gt; decompiler space [char] ; emit
-1011|   dup compile-only? if ."  compile-only " then
-1012|   dup inline?       if ."  inline "       then
-1013|       immediate?    if ."  immediate "    then cr ;
+<pre><code>1023| : see ( --, &lt;string&gt; : decompile a word )
+1024|   token finder ?not-found
+1025|   swap      2dup= if drop here then &gt;r
+1026|   cr colon-space .id dup cr
+1027|   cfa r&gt; decompiler space [char] ; emit
+1028|   dup compile-only? if ."  compile-only " then
+1029|   dup inline?       if ."  inline "       then
+1030|       immediate?    if ."  immediate "    then cr ;
 </code></pre>
 
 <p>A few useful utility words will be added next, which are not strictly
@@ -3208,21 +3216,21 @@ what the current numeric output base is instead. This makes the word
 more flexible, more consistent and shorter, than it otherwise would be as
 the current output base would have to be saved and then restored.</p>
 
-<pre><code>1014| : .s cr depth for aft r@ pick . then next ."  &lt;sp" ;          ( -- )
-1015| h: dm+ chars for aft dup@ space 5u.r cell+ then next ;   ( a u -- a )
-1016| ( h: dc+ chars for aft dup@ space decompile cell+ then next ; ( a u -- a )
-1017| : dump ( a u -- )
-1018|   $10 + \ align up by dump-width
-1019|   4 rshift ( &lt;-- equivalent to "dump-width /" )
-1020|   for
-1021|     aft
-1022|       cr dump-width 2dup
-1023|       over 5u.r colon-space
-1024|       dm+ ( dump-width dc+ ) \ &lt;-- dc+ is optional
-1025|       -rot
-1026|       2 spaces $type
-1027|     then
-1028|   next drop ;
+<pre><code>1031| : .s depth for aft r@ pick . then next ."  &lt;sp" cr ;     ( -- )
+1032| h: dm+ chars for aft dup@ space 5u.r cell+ then next ;   ( a u -- a )
+1033| ( h: dc+ chars for aft dup@ space decompile cell+ then next ; ( a u -- a )
+1034| : dump ( a u -- )
+1035|   $10 + \ align up by dump-width
+1036|   4 rshift ( &lt;-- equivalent to "dump-width /" )
+1037|   for
+1038|     aft
+1039|       cr dump-width 2dup
+1040|       over 5u.r colon-space
+1041|       dm+ ( dump-width dc+ ) \ &lt;-- dc+ is optional
+1042|       -rot
+1043|       2 spaces $type
+1044|     then
+1045|   next drop ;
 </code></pre>
 
 <p>The standard Forth dictionary is now complete, but the variables containing
@@ -3234,8 +3242,8 @@ word list is the one new definitions (defined by <em>:</em>, or <em>create</em>)
 added to. It will be set to <em>_forth-wordlist</em> so new definitions are added
 to the default vocabulary.</p>
 
-<pre><code>1029| [last]              [t] _forth-wordlist t!
-1030| [t] _forth-wordlist [t] current         t!
+<pre><code>1046| [last]              [t] _forth-wordlist t!
+1047| [t] _forth-wordlist [t] current         t!
 </code></pre>
 
 <h2>Block Editor</h2>
@@ -3249,9 +3257,9 @@ the text interpreter.</p>
 data within a Forth system, it is a simply way of abstracting out how mass
 storage works and worked well on the microcomputers available in the 1980s.
 With the rise of computers with a more capable operating systems the Block
-<a href="https://www.taygeta.com/forth/dpans7.htm">Block Word Set</a> Word Set fell out of
-favour, being replaced instead by the <a href="https://www.taygeta.com/forth/dpans11.htm">File Access Word Set</a>, allowing 
-named files to be accessed as a byte stream.</p>
+<a href="https://www.taygeta.com/forth/dpans7.htm">Block Word Set</a> Word Set fell out of favor, being replaced instead by 
+the <a href="https://www.taygeta.com/forth/dpans11.htm">File Access Word Set</a>, allowing named files to be accessed as a 
+byte stream.</p>
 
 <p>To keep things simple this editor uses the block word set and in typical
 Forth fashion simplifies the problem to the extreme, whilst also sacrificing
@@ -3316,54 +3324,55 @@ a feel for it:</p>
 | ------------------------ | --------------------------------------- |
 | editor                   | add the editor word set to search order |
 | $20 l v                  | load block $20 (hex) and display it     |
-| x                        | blank block $20                         |
+| z                        | blank block $20                         |
 | 0 i .( Hello, World ) cr | Put ".( Hello, World ) cr" on line 0    |
 | 1 i 2 2 + . cr           | Put "2 2 + . cr" on line 1              |
 | v                        | list block $20 again                    |
-| x                        | evaluate block $20                      |
+| z                        | evaluate block $20                      |
 | s                        | save contents                           |
 | q                        | unload block word set                   |
 </code></pre>
 
 <p>This editor is based on block editor originally written for <a href="http://retroforth.org/pages/?PortsOfRetroEditor">Retro Forth</a>.</p>
 
-<pre><code>1031| 0 tlast meta!
-1032| h: [block] blk-@ block ;       ( k -- a : loaded block address )
-1033| h: [check] dup b/buf c/l/ u&gt;= if $18 -throw exit then ;
-1034| h: [line] [check] c/l* [block] + ; ( u -- a )
-1035| : l retrieve ;                 ( k -- : Load a block )
-1036| : v blk-@ list ;               ( -- : View current block )
-1037| : n   1  +block l v ;          ( -- : load and list Next block )
-1038| : p [-1] +block l v ;          ( -- : load and list Previous block )
-1039| : k [line] c/l blank ;         ( u -- : delete/Kill line )
-1040| : z [block] b/buf blank ;      ( -- : Zero/blank loaded block )
-1041| : s update flush ;             ( -- : Save changes to disk )
-1042| : q editor-voc -order ;        ( -- : Quit editor )
-1043| : x q blk-@ load editor ;      ( -- : eXecute/evaluate block )
-1044| : ia c/l* + [block] + source drop in@ + ( u u -- Insert At )
-1045|    swap source nip in@ - cmove postpone \ ;
-1046| : i 0 swap ia ;                ( u -- : Insert line )
-1047| ( : u update ;                 ( -- : set block set as dirty ) 
-1048| ( : w words ; )
-1049| ( : yank pad c/l ; )
-1050| ( : c [line] yank &gt;r swap r&gt; cmove ; )
-1051| ( : y [line] yank cmove ; )
-1052| ( : ct swap y c ; )
-1053| ( : xa [line] c/l evaluate ; )
-1054| ( : sw 2dup y [line] swap [line] swap c/l cmove c ; )
-1055| [last] [t] editor-voc t! 0 tlast meta!
+<pre><code>1048| 0 tlast meta!
+1049| h: [block] blk-@ block ;       ( k -- a : loaded block address )
+1050| h: [check] dup b/buf c/l/ u&lt; ?exit $18 -throw ;
+1051| h: [line] [check] c/l* [block] + ; ( u -- a )
+1052| : l retrieve ;                 ( k -- : Load a block )
+1053| : v blk-@ list ;               ( -- : View current block )
+1054| : n   1  +block l v ;          ( -- : load and list Next block )
+1055| : p [-1] +block l v ;          ( -- : load and list Previous block )
+1056| : z [block] b/buf fallthrough; ( -- : Zero/blank loaded block )
+1057| h: blank =bl fill ;            ( b u -- : fill section of memory with spaces )
+1058| : k [line] c/l blank ;         ( u -- : delete/Kill line )
+1059| : s update flush ;             ( -- : Save changes to disk )
+1060| : q editor-voc -order ;        ( -- : Quit editor )
+1061| : x q blk-@ load editor ;      ( -- : eXecute/evaluate block )
+1062| : ia c/l* + [block] + source drop in@ + ( u u -- Insert At )
+1063|    swap source nip in@ - cmove postpone \ ;
+1064| : i 0 swap ia ;                ( u -- : Insert line )
+1065| ( : u update ;                 ( -- : set block set as dirty ) 
+1066| ( : w words ; )
+1067| ( : yank pad c/l ; )
+1068| ( : c [line] yank &gt;r swap r&gt; cmove ; )
+1069| ( : y [line] yank cmove ; )
+1070| ( : ct swap y c ; )
+1071| ( : xa [line] c/l evaluate ; )
+1072| ( : sw 2dup y [line] swap [line] swap c/l cmove c ; )
+1073| [last] [t] editor-voc t! 0 tlast meta!
 </code></pre>
 
 <h2>Final Touches</h2>
 
-<pre><code>1056| there [t] cp t!
-1057| [t] (literal) [v] &lt;literal&gt; t!   ( set literal execution vector )
-1058| [t] cold 2/ 0 t!                 ( set starting word )
-1059| [t] normal-running [v] &lt;boot&gt; t!
-1060| there    $D tcells t! \ Set Length First!
-1061| checksum $E tcells t! \ Calculate image CRC
-1062| finished
-1063| bye
+<pre><code>1074| there [t] cp t!
+1075| [t] (literal) [v] &lt;literal&gt; t!   ( set literal execution vector )
+1076| [t] cold 2/ 0 t!                 ( set starting word )
+1077| [t] normal-running [v] &lt;boot&gt; t!
+1078| there    [t] header-length t! \ Set Length First!
+1079| checksum [t] header-crc t!    \ Calculate image CRC
+1080| finished
+1081| bye
 </code></pre>
 
 <h1>Appendix</h1>
@@ -3470,7 +3479,7 @@ by for their respective stacks: return and data)
 <h3>ALU Operations</h3>
 
 <p>The ALU can be programmed to do the following operations on an ALU instruction,
-some operations trap on error (U/MOD, /MOD).</p>
+some operations trap on error (UM/MOD, /MOD).</p>
 
 <pre><code>|  #  | Mnemonic | Description          |
 | --- | -------- | -------------------- |
@@ -4183,7 +4192,9 @@ hex
 <h2>Floating Point Arithmetic</h2>
 
 <p>Floating point implementation, and adapted version can be found in the
-unit tests file.</p>
+unit tests file. It is believed that this can be used freely so long as
+the copyright notice is left intact, similar to the [MIT][] license - although
+do not hold me to that.</p>
 
 <pre><code>Vierte Dimension Vol.2, No.4 1986
 
@@ -4672,6 +4683,79 @@ CREATE PL 3 , HERE  ,001 , ,   ,010 , ,
     "E HOLD F# #&gt;     TYPE SPACE ;
 </code></pre>
 
-<p>This code was found at: <a href="ftp://ftp.taygeta.com/pub/Forth/">ftp://ftp.taygeta.com/pub/Forth/</a>.</p>
+<p>The code for the floating point library was found at:
+<a href="ftp://ftp.taygeta.com/pub/Forth/">ftp://ftp.taygeta.com/pub/Forth/</a>.</p>
+
+<h2>LOCATE facility</h2>
+
+<p>Some Forths provide a word called <em>locate</em> which allows you to look up where
+a word defined in source. This one looks through a given block to find a space
+delimited word, and if found it returns a boolean indicating whether it found
+it and on which line number it found it. It could easily be adapted to search
+through a list of blocks (which would be more useful). <em>locate</em> is an example
+of using block storage as a primitive database, it could be used for other
+purposes as well, for example finding users or looking up values in a list of
+things.</p>
+
+<pre><code>$40 constant c/l
+$10 constant l/b
+
+: =string compare 0= ;
+: line c/l * blk @ block + c/l ;                     ( u -- a u )
+: locate-line                                        ( a -- f )
+    begin 
+       bl word dup c@ 
+    while 
+      over count rot count 
+      =string if drop -1 exit then
+    repeat 2drop 0 ;
+
+: redirect ( a u -- )
+  get-input &gt;r &gt;r &gt;r &gt;r &gt;r
+  line 0 -1 0 set-input 
+  ' locate-line catch
+  r&gt; r&gt; r&gt; r&gt; r&gt; set-input throw ;
+
+: (locate) ( a --, locate counted string 'a' current in 'blk' )
+    0 l/b 1- for 
+      2dup redirect if nip -1 rdrop exit then
+    1+ next 2drop 0 ; ( k -- )
+
+: locate ( "name", k -- u t )
+    block drop bl word count pad pack$ (locate) ;
+
+: found ." FOUND BLK:" blk @ u. ."  LINE:" dup u. cr line type cr ; ( u -- )
+: not-found drop ." NOT FOUND" cr ; ( u --  )
+: .locate locate if found exit then not-found ; ( "name", k -- )
+
+hide line
+hide redirect
+hide (locate)
+hide locate-line
+hide found
+hide not-found
+
+editor $18 l z
+0 i  HELLO ...
+1 i     
+2 i  
+3 i   ... WORLD HOW ARE YOU
+4 i     X      Y
+v
+q
+
+$18 .locate WORLD ( &lt;- found, line 3 )
+$18 .locate YOU   ( &lt;- found, line 3 )
+$18 .locate $$$   ( &lt;- not-found )
+$18 .locate HELLO ( &lt;- found, line 0 )
+$18 .locate Y     ( &lt;- found, line 4 )
+</code></pre>
+
+<p>The way this word set works is similar to how the <em>load</em> word works, it
+redirects the parser to parse out space delimited words line by line from a
+block, but instead of evaluating the line it does a string comparison on each
+space delimited word. We could simplify this if the <em>eval</em> keyword was 
+vectored, or even better if <em>interpret</em> was. For that matter, it would help
+if a number of input words were vectored.</p>
 
 <p><style type="text/css">body{margin:40px auto;max-width:850px;line-height:1.6;font-size:16px;color:#444;padding:0 10px}h1,h2,h3{line-height:1.2}table {width: 100%; border-collapse: collapse;}table, th, td{border: 1px solid black;}code { color: #091992; } </style></p>
